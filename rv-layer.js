@@ -81,6 +81,12 @@ var imageDirName = null;  // 選ばれている画像の保存先フォルダ名
 
 // ---------- CSS 自己注入 ----------
 var CSS = ""
+// レイヤーは自分で box-sizing を決める。指定しないと対象ページの設定をそのまま受け、
+// border-box を敷いていないページでは width:100% の入力欄が padding と border のぶん
+// はみ出す（実測18px）。対象ページ側へは影響させないよう、rvの要素だけに閉じる。
++"#rvbar,#rvbar *,#rvpop,#rvpop *,#rvdonepanel,#rvdonepanel *,#rvorphan,#rvorphan *,"
++"#rvtoast,#rvmarks,#rvmarks *,#rvsel,#rvsel *,#rvhover,#rvhover *,#rvcrop,#rvcrop *"
++"{box-sizing:border-box}"
 +"mark.rv{background:var(--rv-mark,#e9f7f9);border-bottom:2px solid var(--rv-accent,var(--accent,#006f83));"
 +"padding:1px 0;cursor:pointer;border-radius:2px}"
 +"mark.rv:hover{background:var(--rv-mark-hover,#c8f8ff)}"
