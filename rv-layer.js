@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.11
+ * レビュー注釈レイヤー v1.12
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -46,8 +46,12 @@ var LEGACY_DOC = (location.pathname.split("/").pop() || "untitled");
 var DOC = location.pathname || "/";
 var KEY = "rv:" + DOC;
 var LEGACY_KEY = "rv:" + LEGACY_DOC;
-var ENABLE_KEY = "rv-layer:enabled";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.11";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var ENABLE_KEY = "rv-layer:enabled";
+// 旧キーは「ファイル名だけ」で作られていたため、同名のファイルが複数のパスにあると
+// どのページのものか判別できない。最初に取り込んだページを記録し、他のパスでは
+// 二度と読まない（読むと同じコメントが各ページへ複製され、別文書のものとして扱われる）。
+var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
+var RV_VERSION = "1.12";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -315,6 +319,25 @@ function nowISO(){
   var d = new Date(), p = function(n){ return String(n).padStart(2, "0"); };
   return d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
 }
+// 旧キーごとに「どのパスが取り込んだか」を1回だけ決める。
+// 未登録なら今のパスが名乗り、登録済みなら一致するパスだけが読める。
+function legacyClaimedMap(){
+  try{ return JSON.parse(localStorage.getItem(LEGACY_CLAIM_KEY) || "{}") || {}; }
+  catch(e){ return {}; }
+}
+function legacyClaimableBy(doc){
+  var m = legacyClaimedMap();
+  return !m[LEGACY_KEY] || m[LEGACY_KEY] === doc;
+}
+function claimLegacy(doc){
+  try{
+    var m = legacyClaimedMap();
+    if(m[LEGACY_KEY] === doc) return;
+    m[LEGACY_KEY] = doc;
+    localStorage.setItem(LEGACY_CLAIM_KEY, JSON.stringify(m));
+  }catch(e){}
+}
+
 function migrateLegacyStore(){
   try{
     localStorage.setItem(KEY, JSON.stringify(store));
@@ -333,8 +356,11 @@ function migrateLegacyStore(){
       return;
     }
   }
-  // 旧キーは同名ページのどれに属するか判別できないため、互換用の読み取り元として残す。
-  console.info("[rv] 保存済みコメントをページパス別のキーへ移行しました（旧キーは互換用に保持）。");
+  // 旧キー自体は消さず互換用に残すが、このパスが取り込んだことを記録して
+  // 同名の別パスが同じものを読まないようにする。
+  claimLegacy(DOC);
+  console.info("[rv] 保存済みコメントをページパス別のキーへ移行しました" +
+               "（旧キーは互換用に保持。取り込み元はこのパスに固定）。");
 }
 
 // 保存データは同一オリジンの別スクリプト・手による編集・将来版との不整合で壊れうる。
@@ -363,7 +389,7 @@ function load(){
   try{
     var raw = localStorage.getItem(KEY);
     var fromLegacy = false;
-    if(!raw && LEGACY_KEY !== KEY){
+    if(!raw && LEGACY_KEY !== KEY && legacyClaimableBy(DOC)){
       raw = localStorage.getItem(LEGACY_KEY);
       fromLegacy = !!raw;
     }
@@ -475,6 +501,15 @@ function applyResolved(){
   store.appliedRevs.push(r.rev);
   save();
   if(n > 0) toast("対応分 " + n + "件を済みにしました");
+}
+
+// Date.now() だけだと、同じミリ秒に2件作ったとき同じIDになる。衝突すると
+// 編集・削除・済み判定が別のコメントを巻き込む（IDで引き当てているため）。
+// タブごとに違う接尾辞と連番を足して、同じブラウザの別タブとも衝突しないようにする。
+var idTab = Math.random().toString(36).slice(2, 6);
+var idSeq = 0;
+function newCommentId(){
+  return "c" + Date.now() + idTab + (++idSeq).toString(36);
 }
 
 function openComments(){ return store.comments.filter(function(c){ return c.status !== "done"; }); }
@@ -816,13 +851,41 @@ function domSourceHtml(){
 }
 // 元ファイルをそのまま取り直せるならそれが一番正確（改変ゼロ）。file://等でfetchが
 // 効かない・失敗する場合だけDOM復元へ落ちる。
+// 注釈を外した表示中のページの、見えている文字だけを取り出す。
+// 再取得したHTMLが同じページかを比べるために使う。
+function visibleTextOf(docLike){
+  var body = docLike.querySelector ? docLike.querySelector("body") : null;
+  if(!body) return "";
+  var t = body.textContent || "";
+  return t.replace(/\s+/g, " ").trim();
+}
+// 再取得したHTMLが、読み手が実際に見ていた内容と同じか確かめる。
+// サーバーが時刻や認証で中身を変える場合、SPAが表示後にDOMを組む場合、
+// 再取得版は注釈した画面と別物になる。そのままAIへ渡すと、見てもいない内容を直させる。
+function sourceMatchesView(fetchedText, domText){
+  try{
+    var parse = new DOMParser();
+    var a = visibleTextOf(parse.parseFromString(fetchedText, "text/html"));
+    // 表示中の側は domSourceHtml()（注釈UIを外した版）を使う。
+    // 生の document を使うと、レイヤー自身のバー・ポップアップ・番号バッジの文字が
+    // 混ざって常に食い違い、一致しているページまで不一致と判定してしまう。
+    var b = visibleTextOf(parse.parseFromString(domText, "text/html"));
+    if(!a || !b) return false;
+    var diff = Math.abs(a.length - b.length) / Math.max(a.length, b.length);
+    return diff <= 0.1;   // 1割を超えて違えば別物とみなす
+  }catch(e){ return false; }
+}
 function getSourceHtml(){
-  if(typeof fetch === "function" && /^https?:$/.test(location.protocol)){
+  if(typeof fetch === "function" && /^https?:$/.test(location.protocol) &&
+     typeof DOMParser === "function"){
     return fetch(location.href, {cache:"no-store"}).then(function(res){
       if(!res.ok) throw new Error("HTTP " + res.status);
       return res.text();
     }).then(function(text){
-      return {text:text, method:"fetch"};
+      var dom = domSourceHtml();
+      if(sourceMatchesView(text, dom)) return {text:text, method:"fetch"};
+      console.warn("[rv] 再取得したHTMLが表示中の内容と食い違うため、表示中のDOMから書き出します。");
+      return {text:dom, method:"dom-mismatch"};
     }).catch(function(){
       return {text:domSourceHtml(), method:"dom"};
     });
@@ -845,9 +908,13 @@ function reviewText(imageResult, open, sourceInfo){
   out += "- 文書タイトル: " + document.title + "\n";
   out += "- 書き出し日時: " + nowISO() + "\n";
   out += "- 未済みコメント: " + open.length + "件\n";
-  out += "- 元HTMLの取得経路: " + (sourceInfo.method === "fetch" ?
-    "fetch（サーバー/ファイルから再取得。改変なし）" :
-    "DOMシリアライズ（表示中のページから復元。属性順序等に軽微な整形差が出ることがある）") + "\n\n";
+  out += "- 元HTMLの取得経路: " + (
+    sourceInfo.method === "fetch" ?
+      "fetch（サーバーから再取得。表示中の内容と一致することを確認済み）" :
+    sourceInfo.method === "dom-mismatch" ?
+      "DOMシリアライズ（サーバーから再取得したHTMLが表示中の内容と食い違ったため、" +
+      "読み手が実際に見ていた表示中のページを採用した。サーバー側は別の内容を返している）" :
+      "DOMシリアライズ（表示中のページから復元。属性順序等に軽微な整形差が出ることがある）") + "\n\n";
   out += "## AIへの対応手順\n\n";
   out += "対応が済んだら、source/" + sourceInfo.filename + " の改訂版の </body> 直前に\n\n";
   out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMM}\",ids:[\"対応したid\",...]}</script>\n\n";
@@ -1780,7 +1847,16 @@ function openPop(x, y, quote, note, images){
   // ここでフォーカスを移すと選択が解けてCmd+Cが効かなくなる（実測 Chromium 145）。
   // 文字キーを押した時点で初めてコメント欄へ入る（bindEventsのkeydown）
 }
+// 書きかけがあるか。Escapeとページ遷移で黙って消さないための判定。
+function hasUnsavedDraft(){
+  if(!pop || pop.style.display !== "block") return false;
+  var note = document.getElementById("rvnote");
+  if(note && note.value && note.value.trim()) return true;
+  return popImgs.some(function(im){ return !im.name; });   // まだ保存していない添付
+}
+var escArmed = false;   // 1回目のEscで警告、2回目で破棄
 function closePop(){
+  escArmed = false;
   clearPendingSel();
   popGen++; popImgsPending = 0;
   pop.style.display = "none"; editing = null; pending = null; popImgs = []; editingBody = false;
@@ -1895,7 +1971,7 @@ function bindEvents(){
         }
       });
     } else if(pending){
-      var id = "c" + Date.now();
+      var id = newCommentId();
       seenIds[id] = true;
       var imgsN = flushImages(id);
       if(pending.kind === "crop"){
@@ -1934,10 +2010,24 @@ function bindEvents(){
     navigator.clipboard.writeText(out).then(function(){
       toast("コピーしました。チャットに貼ってください");
     }, function(){
+      // execCommand の戻り値を見ないと、禁止されている環境でも「コピーしました」と出る。
+      // 読み手は古いクリップボードを貼り、コメントが渡ったと思い込む。
       var t = document.createElement("textarea");
-      t.value = out; document.body.appendChild(t); t.select();
-      document.execCommand("copy"); t.remove();
-      toast("コピーしました（フォールバック）");
+      t.value = out;
+      t.style.position = "fixed"; t.style.left = "-9999px";
+      document.body.appendChild(t); t.select();
+      var ok = false;
+      try{ ok = document.execCommand("copy"); }catch(e){ ok = false; }
+      t.remove();
+      if(ok){ toast("コピーしました（フォールバック）"); return; }
+      // どちらの経路も駄目なときは、内容を失わせずにファイルで渡す
+      try{
+        downloadBlob(new Blob([out], {type:"text/plain;charset=utf-8"}),
+                     "rv-" + docSlug() + "-comments.txt");
+        toast("コピーできないので、テキストで書き出しました");
+      }catch(e2){
+        toast("コピーできませんでした。「書き出し」を使ってください");
+      }
     });
   };
   document.getElementById("rvexport").onclick = exportReview;
@@ -2020,12 +2110,29 @@ function bindEvents(){
     }
     if(e.key === "Escape" && picking){ exitPick(); return; }
     if(e.key === "Escape"){
+      // 書きかけを1回のEscで消さない。押した本人が消したつもりでないことがある
+      if(hasUnsavedDraft() && !escArmed){
+        escArmed = true;
+        toast("書きかけがあります。もう一度Escで破棄します");
+        setTimeout(function(){ escArmed = false; }, 4000);
+        return;
+      }
       closePop();
       var dp = document.getElementById("rvdonepanel");
       if(dp) dp.style.display = "none";
     }
     if((e.metaKey || e.ctrlKey) && e.key === "Enter" && pop.style.display === "block")
       document.getElementById("rvsave").click();
+  });
+
+  // 書きかけのまま別のページへ移ると、コメントは保存前なので消える。
+  // 対象ページ本文のリンクを踏んだときが一番起きやすい。
+  // 書きかけがあるときだけブラウザの確認を出す（無いときは何も足さない）。
+  window.addEventListener("beforeunload", function(e){
+    if(!hasUnsavedDraft()) return;
+    e.preventDefault();
+    e.returnValue = "";
+    return "";
   });
 }
 
@@ -2048,7 +2155,12 @@ function setEnabled(on){
 function dropMark(){
   try{
     var q = location.search.replace(/([?&])rv=[01](&|$)/, "$1").replace(/[?&]$/, "");
-    history.replaceState(null, "", location.pathname + q);
+    // 消すのは rv の印だけ。ページ内アンカー（#section-3 等）は読み手が
+    // その位置を見に来た手がかりなので残す。以前は hash を丸ごと捨てていて、
+    // ?rv=1 と一緒にアンカーを渡されると行き先が消えていた。
+    var h = (location.hash || "");
+    if(h.toLowerCase() === "#rv" || h.toLowerCase() === "#rv-off") h = "";
+    history.replaceState(null, "", location.pathname + q + h);
   }catch(e){}
 }
 

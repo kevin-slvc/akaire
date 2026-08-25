@@ -37,6 +37,6 @@ body:
     attributes:
       label: rv-layer.js の版数
       description: バーにマウスを乗せると出ます。`window.__rv.version` でも取れます
-      placeholder: "1.11"
+      placeholder: "1.12"
     validations:
       required: true
