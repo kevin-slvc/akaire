@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>最小の導入例</title>
+</head>
+<body>
+
+<h1>最小の導入例</h1>
+<p>
+  このページはレビュー注釈レイヤーの最小構成を示す。デザインもスタイルも持たない
+  素のHTMLに、<code>&lt;/body&gt;</code> 直前の1行だけを足している。
+</p>
+<p>
+  URL末尾に <code>#rv</code> を付けて開くと、右下にバーが現れる。本文を選択すると
+  コメントを入力できる。<code>#rv-off</code> を付けると止まる。
+</p>
+<p>
+  何もしていないブラウザでこのページを開いても（印なしの素のURLで開いても）、
+  バーは出ない。既定はOFFで、有効化した記憶はブラウザ側（<code>localStorage</code>）
+  にしか残らないので、このファイルを人に送っても相手の画面には出ない。
+</p>
+
+<!-- ここが導入時に足す唯一の1行。パスはこのファイルから見た rv-layer.js の相対位置 -->
+<script src="../rv-layer.js"></script>
+</body>
+</html>

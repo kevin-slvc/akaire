@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><title>XSS回帰: 位置を見失ったコメントの表示</title></head>
+<body>
+  <p>
+    位置を見失ったコメント（本文が変わって引用文が見つからなくなったもの）の一覧表示に、
+    引用文と指摘文がそのままHTMLとして流し込まれていないかを確かめる固定資産。
+  </p>
+  <p>
+    このページを開くと、下のスクリプトが仕込んだコメント2件が「位置を見失ったコメント」
+    として表示される。<strong>画面に img タグが文字として見えれば合格</strong>。
+    <code>window.__rvXssExecuted</code> が立っていたら不合格。
+  </p>
+  <p>
+    2件に分けてあるのは、指摘文と引用文で通り方が違うため。指摘文はそのまま連結され、
+    引用文は24文字で切られる。切られた側は属性の途中で途切れて実行に至らないことがあるので、
+    切られない指摘文の側を主の検体にしている。
+  </p>
+
+  <script>
+  (function(){
+    var PAYLOAD = '<img src=x onerror="window.__rvXssExecuted=1">';
+    var base = {before:"", after:"", pos:0, images:[], status:"open", created:"2026-01-01T00:00:00.000Z"};
+    function c(o){ var r = {}; for(var k in base) r[k] = base[k]; for(var k2 in o) r[k2] = o[k2]; return r; }
+    try{
+      localStorage.setItem("rv-layer:enabled", "1");
+      localStorage.setItem("rv:" + location.pathname, JSON.stringify({
+        docId: location.pathname,
+        title: document.title,
+        updated: null,
+        appliedRevs: [],
+        comments: [
+          c({id:"cNote",  heading:"指摘文に仕込む", quote:"本文のどこにも無い引用文", note:PAYLOAD}),
+          c({id:"cQuote", heading:"引用文に仕込む", quote:PAYLOAD, note:"引用文の側に仕込んだ検体"})
+        ]
+      }));
+    }catch(e){}
+  })();
+  </script>
+  <script src="../../rv-layer.js"></script>
+</body>
+</html>

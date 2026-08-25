@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>回帰確認: 複数の画像形式が混ざる添付</title>
+<!--
+  何を確かめるためのものか:
+  レビューコメントに画像を添付するとき、拡張子（PNG/WebP/GIF/JPEG等）ごとに
+  MIMEタイプからzip内のファイル名拡張子を正しく決められているかの回帰確認用
+  （rv-layer.js の imageExt()。旧実装は WebP が .jpg になる不具合があった）。
+
+  このページ自体は最小限のプレースホルダ画像（PNG/GIF/SVGのdata URI。WebPは
+  手打ちのbase64だと壊れる恐れがあるため埋め込まず、下の手順で実ファイルを使う）
+  しか持たない。実際の確認は「異なる形式の画像ファイルをコメントに添付する」操作で行う。
+
+  確認手順（tests/manual-checklist.md にも同じ内容あり）:
+  1. #rv を付けて開く
+  2. 本文のどこかを選択してコメント欄を開く
+  3. 手元にある PNG / JPEG / WebP / GIF の画像ファイルを1枚ずつペーストまたは
+     ドロップして添付する（4枚まで＝MAXIMGの上限に収まる）
+  4. 保存し、バーの「書き出し」でzipを作る
+  5. zipを展開し、images/ 配下の拡張子が元画像の実際の形式と一致しているか確認する
+     （WebPを貼ったのに .jpg になっていたら回帰）
+-->
+<style>
+  body{font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.8}
+  .swatch{display:inline-flex;gap:12px;margin:16px 0;flex-wrap:wrap}
+  .swatch figure{margin:0;text-align:center;font-size:12px}
+  .swatch img{display:block;width:40px;height:40px;border:1px solid #ccc;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>画像形式の確認</h1>
+<p>このページ内蔵の画像は最小限のPNG・GIF・SVGのみ（正当なバイト列を保証できる形式に
+  限定している）。WebP・JPEGを含む形式別の確認は、コメントへの添付操作で行う。</p>
+
+<div class="swatch">
+  <figure>
+    <img alt="PNG" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=">
+    <figcaption>PNG</figcaption>
+  </figure>
+  <figure>
+    <img alt="GIF" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7">
+    <figcaption>GIF</figcaption>
+  </figure>
+  <figure>
+    <img alt="SVG" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'&gt;&lt;rect width='40' height='40' fill='%23264af4'/&gt;&lt;/svg&gt;">
+    <figcaption>SVG</figcaption>
+  </figure>
+</div>
+
+<p>この段落を選択してコメントを開き、手元のPNG/JPEG/WebP/GIFファイルを添付してください。</p>
+
+<script src="../../rv-layer.js"></script>
+</body>
+</html>

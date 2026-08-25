@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>回帰確認: 同じ文言が複数箇所にある</title>
+<!--
+  何を確かめるためのものか:
+  同じ文言「内容は同じです」が3箇所に出てくるページ。
+  加えて、文末まで完全に同一の段落を2つ置いてある（カードD・E）。
+  前後の文脈で区別がつく部分一致だけだと、位置を保存しなくても正しく照合できて
+  しまうため、文脈でも区別できない完全一致の組を回帰の本命に据えている。
+  照合ロジックが indexOf() の1件目にだけ飛び、2件目・3件目に付けたコメントが
+  リロード後に1件目へ化ける不具合の回帰確認用。
+
+  確認手順:
+  1. #rv を付けて開く
+  2. カードB（2件目）の「内容は同じです」を選択してコメント「これはB」を付ける
+  3. カードC（3件目）の「内容は同じです」を選択してコメント「これはC」を付ける
+  4. リロード（#rv付きのまま）しても、B・Cそれぞれのマークが元のカードに
+     ついたままであることを確認する（1件目=カードAへ寄ってしまったら回帰）
+-->
+<style>
+  body{font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.8}
+  .card{border:1px solid #ccc;padding:16px;margin-bottom:16px;border-radius:6px}
+  h2{font-size:16px;margin:0 0 8px}
+</style>
+</head>
+<body>
+<h1>重複文言の照合確認</h1>
+
+<div class="card">
+  <h2>カードA</h2>
+  <p>内容は同じです。これは1件目の出現です。</p>
+</div>
+
+<div class="card">
+  <h2>カードB</h2>
+  <p>内容は同じです。これは2件目の出現です。</p>
+</div>
+
+<div class="card">
+  <h2>カードC</h2>
+  <p>内容は同じです。これは3件目の出現です。</p>
+</div>
+
+<div class="card">
+  <h2>カードD</h2>
+  <p>ここは前後の文脈まで含めて完全に同じ段落です。</p>
+</div>
+
+<div class="card">
+  <h2>カードE</h2>
+  <p>ここは前後の文脈まで含めて完全に同じ段落です。</p>
+</div>
+
+<script src="../../rv-layer.js"></script>
+</body>
+</html>

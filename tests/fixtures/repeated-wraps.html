@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>回帰確認: .wrap の繰り返し</title>
+<!--
+  何を確かめるためのものか:
+  セクションごとに class="wrap" のラッパーを繰り返す構成のページ。
+  レビュー層の走査範囲(ROOT)が「最初の .wrap だけ」になっていた不具合の回帰確認用
+  （現行実装は ROOT = document.body なので直らない
+  はずはないが、将来のリファクタでROOTの決め方が変わったときに検知するための固定資産）。
+
+  確認手順:
+  1. #rv を付けて開く
+  2. セクション1・2・3それぞれの本文をドラッグ選択する
+  3. 3セクションとも同じようにコメント入力欄が開くことを確認する
+     （最初のセクションしか開かない = 回帰）
+-->
+<style>
+  body{font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.8}
+  .wrap{border:1px dashed #ccc;padding:16px;margin-bottom:24px}
+  h2{font-size:18px}
+</style>
+</head>
+<body>
+<h1>セクション繰り返し確認</h1>
+
+<div class="wrap">
+  <h2>セクション1</h2>
+  <p>セクション1の本文です。ここをドラッグ選択してコメント入力欄が開くか確認します。</p>
+</div>
+
+<div class="wrap">
+  <h2>セクション2</h2>
+  <p>セクション2の本文です。2つ目の .wrap でも同じように選択できることを確認します。</p>
+</div>
+
+<div class="wrap">
+  <h2>セクション3</h2>
+  <p>セクション3の本文です。3つ目の .wrap でも同じように選択できることを確認します。</p>
+</div>
+
+<script src="../../rv-layer.js"></script>
+</body>
+</html>

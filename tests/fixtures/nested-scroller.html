@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>回帰確認: overflow:auto の内側のコンテンツ</title>
+<!--
+  何を確かめるためのものか:
+  overflow:auto を持つ内側スクロール領域の中に要素があるページ。
+  枠コメント（〔枠〕）の枠線・バッジは body 直下の絶対座標で描くため、内側スクロール
+  そのものを追従できているか、内側をスクロールした状態でも枠が正しい位置に出るかを
+  確かめる（rv-layer.js 実装コメント D項「body直下の絶対座標、内側スクロールでは
+  ずれる」の回帰確認用）。
+
+  確認手順:
+  1. #rv を付けて開く
+  2. 内側スクロール領域の中の「アイテム3」をクリック→バーの「枠」で枠選択、または
+     Option+クリックで枠コメントを付ける
+  3. 内側スクロール領域だけを下にスクロールする
+  4. 枠線・バッジが「アイテム3」の位置に追従するか確認する（追従せず古い位置に
+     残ったままなら回帰）
+  5. ページ全体をリロードしても枠コメントが同じアイテムに付いているか確認する
+-->
+<style>
+  body{font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.8}
+  .scroller{
+    height:160px;
+    overflow:auto;
+    border:1px solid #ccc;
+    border-radius:6px;
+    padding:8px;
+  }
+  .item{padding:12px;border-bottom:1px solid #eee}
+  .item:last-child{border-bottom:0}
+</style>
+</head>
+<body>
+<h1>内側スクロールの確認</h1>
+<p>下の枠は overflow:auto で高さ160pxに固定してある。8件のアイテムが入っているので
+  スクロールが必要になる。</p>
+
+<div class="scroller">
+  <div class="item">アイテム1</div>
+  <div class="item">アイテム2</div>
+  <div class="item">アイテム3（このアイテムに枠コメントを付けてスクロール追従を確認）</div>
+  <div class="item">アイテム4</div>
+  <div class="item">アイテム5</div>
+  <div class="item">アイテム6</div>
+  <div class="item">アイテム7</div>
+  <div class="item">アイテム8</div>
+</div>
+
+<script src="../../rv-layer.js"></script>
+</body>
+</html>

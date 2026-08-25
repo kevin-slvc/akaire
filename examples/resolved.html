@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>済み消し込みの例</title>
+</head>
+<body>
+
+<h1>済み消し込みの例</h1>
+<p>
+  この見出しの直後の段落は、かつて「もっと具体的に」というコメントが付いていた想定の
+  段落です。対応する側が本文を直し、対応したコメントのIDを <code>window.__rvResolved</code>
+  として埋め込むと、次にこのページを開いたとき（同じブラウザで、対象のコメントが
+  <code>localStorage</code> に残っている場合）そのコメントは自動で「済み」へ落ちます。
+</p>
+<p>
+  例えば2026年8月19日 18時30分に対応したなら、下のように書きます（このファイル自体には
+  実在するコメントIDが無いので、下のタグは動作の見本であって実際には何も消し込みません）。
+</p>
+<pre><code>&lt;script&gt;
+window.__rvResolved = {
+  rev: "r202608191830",
+  ids: ["c1755590000000", "c1755590012345"]
+};
+&lt;/script&gt;</code></pre>
+<p>
+  <code>rev</code> は対応するたびに新しい値にします。<code>ids</code> には対応した
+  コメントの<strong>ID</strong>（表示番号ではない）だけを入れます。詳しい規約は
+  <code>specs/resolved-contract.md</code> を参照してください。
+</p>
+
+<!-- 見本のタグ。rev/idsとも架空の値なので、このページを実際に開いても
+     何のコメントも消し込まれない（該当IDが無いため無視されるだけ） -->
+<script>
+window.__rvResolved = {
+  rev: "r202608191830",
+  ids: ["c1755590000000", "c1755590012345"]
+};
+</script>
+<script src="../rv-layer.js"></script>
+</body>
+</html>
