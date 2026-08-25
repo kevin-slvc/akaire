@@ -12,6 +12,7 @@
 // 赤い点を追従させている。どちらもデモ専用で、レビュー層本体とは関係がない。
 
 import { chromium } from 'playwright';
+import fs from 'node:fs/promises';
 
 const BASE = 'http://localhost:8765/docs/demo-page.html';
 const OUT  = process.argv[2];
@@ -54,6 +55,9 @@ const run = async () => {
   });
   const page = await ctx.newPage();
   page.on('dialog', d => d.accept().catch(()=>{}));
+  // 字幕ファイル（srt/vtt）を作るための時刻。録画はページ生成の時点から始まる
+  const t0 = Date.now();
+  const cues = [];
 
   let resolvedIds = [];
   await ctx.route('**/demo-page.html*', async route => {
@@ -69,6 +73,7 @@ const run = async () => {
   const setup = async () => { await page.evaluate(CURSOR); await page.evaluate(CAPTION); };
   const cap = async (t, ms=0) => {
     await page.evaluate(s => { const d=document.getElementById('__demoCap'); if(d) d.textContent = s; }, t);
+    cues.push({start: (Date.now() - t0) / 1000, text: t});
     if (ms) await page.waitForTimeout(ms);
   };
   const moveTo = async (x, y, steps=22) => { await page.mouse.move(x, y, {steps}); await page.waitForTimeout(180); };
@@ -124,7 +129,37 @@ const run = async () => {
   await clickAt(save2.x, save2.y);
   await page.waitForTimeout(1200);
 
-  // --- 3. コピー ---
+  // --- 3. Option+ドラッグで範囲を囲む ---
+  await cap('文字でも要素でもない場所は、Optionを押しながらドラッグ。', 2600);
+  await page.evaluate(() => document.querySelector('.cards').scrollIntoView({block:'center'}));
+  await page.waitForTimeout(700);
+  // カード2枚をまたぐ範囲を囲む（文字でも1要素でもない＝切り取りが要る場面）
+  const drag = await page.evaluate(() => {
+    const cs = document.querySelectorAll('.cards .card');
+    const a = cs[0].getBoundingClientRect(), b = cs[1].getBoundingClientRect();
+    return {x1: a.left - 8, y1: a.top - 10, x2: b.right + 8, y2: b.bottom + 10};
+  });
+  await moveTo(drag.x1, drag.y1);
+  await page.keyboard.down('Alt');
+  await page.mouse.down();
+  const stepsN = 14;
+  for (let s = 1; s <= stepsN; s++) {
+    await page.mouse.move(drag.x1 + (drag.x2-drag.x1)*s/stepsN,
+                          drag.y1 + (drag.y2-drag.y1)*s/stepsN, {steps:3});
+    await page.waitForTimeout(45);
+  }
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await page.waitForTimeout(900);
+  await cap('写真の切り取りのように、好きな範囲を四角く囲める。', 2000);
+  await typeIn('#rvnote', 'この並びだけ余白が詰まって見える');
+  await page.waitForTimeout(500);
+  const save3 = await box('#rvsave');
+  await clickAt(save3.x, save3.y);
+  await page.waitForTimeout(1600);
+
+  // --- 4. コピー ---
   await cap('書き終えたらバーの〈コピー〉。', 1800);
   await page.evaluate(() => window.scrollTo({top:0, behavior:'instant'}));
   await page.waitForTimeout(400);
@@ -146,7 +181,7 @@ const run = async () => {
   await page.waitForTimeout(6500);
   await page.evaluate(() => { const d = document.getElementById('__demoPre'); if (d) d.remove(); });
 
-  // --- 4. 済み消し込み ---
+  // --- 5. 済み消し込み ---
   await cap('AIが直したHTMLには、対応済みの印が入って返ってくる。', 2600);
   // 2件のうち1件だけ直った状態を作る。全部消すと「何が残っているか」が見えない
   resolvedIds = await page.evaluate(() => window.__rv.store.comments.slice(0, 1).map(c => c.id));
@@ -159,8 +194,28 @@ const run = async () => {
   await page.waitForTimeout(2600);
   await cap('バーに残るのは、まだ直っていないぶんだけ。これをまた渡す。', 4200);
 
+  const total = (Date.now() - t0) / 1000;
   await page.close();
   await ctx.close();
   await browser.close();
+
+  // 字幕。各行は次の行が出るまで表示していたので、そのまま終了時刻にする
+  const ts = sec => {
+    const h = String(Math.floor(sec/3600)).padStart(2,'0');
+    const m = String(Math.floor(sec%3600/60)).padStart(2,'0');
+    const s2 = String(Math.floor(sec%60)).padStart(2,'0');
+    const ms = String(Math.round((sec%1)*1000)).padStart(3,'0');
+    return {h, m, s: s2, ms};
+  };
+  const srtT = sec => { const t = ts(sec); return `${t.h}:${t.m}:${t.s},${t.ms}`; };
+  const vttT = sec => { const t = ts(sec); return `${t.h}:${t.m}:${t.s}.${t.ms}`; };
+  const lines = cues.map((c, i) => ({...c, end: i+1 < cues.length ? cues[i+1].start : total}));
+  const srt = lines.map((c, i) =>
+    `${i+1}\n${srtT(c.start)} --> ${srtT(c.end)}\n${c.text}\n`).join('\n');
+  const vtt = 'WEBVTT\n\n' + lines.map(c =>
+    `${vttT(c.start)} --> ${vttT(c.end)}\n${c.text}\n`).join('\n');
+  await fs.writeFile(new URL('../docs/demo.srt', import.meta.url), srt, 'utf8');
+  await fs.writeFile(new URL('../docs/demo.vtt', import.meta.url), vtt, 'utf8');
+  console.log(`captions: ${lines.length} cues / ${total.toFixed(1)}s`);
 };
 run().then(()=>console.log('done')).catch(e=>{ console.error(e); process.exit(1); });

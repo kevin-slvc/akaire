@@ -353,6 +353,7 @@ var GUIDE_STEPS = [
   "本文をドラッグして選ぶと、その場にコメント欄が開く。気になった一文を選んでみて",
   "気づいたことを書いて〈保存〉。選んだところに印と番号が付く",
   "表・カード・図はドラッグでは選べない。バーの〈枠〉を押してからクリックすると丸ごと選べる",
+  "文字にも要素にも当てはまらない場所は、Optionを押しながらドラッグ。写真の切り取りのように四角く囲める",
   "書き終えたらバーの〈コピー〉。AIにそのまま貼ると、直したうえで対応済みの印まで入れて返してくる"
 ];
 function guideSeen(){
@@ -2126,7 +2127,8 @@ function bindEvents(){
     var savedKind = pending && pending.kind;
     save(); closePop(); render(); window.getSelection().removeAllRanges();
     guideAdvance(2);
-    if(savedKind === "block" || savedKind === "crop") guideAdvance(3);
+    if(savedKind === "block") guideAdvance(3);
+    if(savedKind === "crop") guideAdvance(4);
     if(reopened) toast(reopened);
   };
   document.getElementById("rvdel").onclick = function(){
@@ -2148,7 +2150,7 @@ function bindEvents(){
   document.getElementById("rvcopy").onclick = function(){
     var out = copyText();
     if(!out){ toast("未済みコメントはありません"); return; }
-    guideAdvance(4);
+    guideAdvance(5);
     navigator.clipboard.writeText(out).then(function(){
       toast("コピーしました。チャットに貼ってください");
     }, function(){
