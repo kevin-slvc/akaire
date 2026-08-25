@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.13
+ * レビュー注釈レイヤー v1.14
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -20,7 +20,8 @@
  *   - 画面上で矩形に囲った範囲への指摘（切り取り）
  *   - 指摘への画像添付（ペースト / ドロップ）と、指摘への追記
  *   - 未対応の指摘だけをまとめてコピー（AIへそのまま貼れる形）
- *   - 元HTML・review.md・画像を含むzipの書き出し（別PCや別の人へ渡すときの補助）
+ *   - 元HTML・review.md・画像を含むzipの保存（「zip」ボタン。別PCや別の人へ渡すときの補助）
+ *   - 初めて開いた人にだけ出る4ステップの使い方ガイド（スキップ可・window.__rv.guide()で再表示）
  *
  * 対応済みの反映:
  *   1. 「コピー」で未対応の指摘をAIへ貼る
@@ -50,8 +51,10 @@ var ENABLE_KEY = "rv-layer:enabled";
 // 旧キーは「ファイル名だけ」で作られていたため、同名のファイルが複数のパスにあると
 // どのページのものか判別できない。最初に取り込んだページを記録し、他のパスでは
 // 二度と読まない（読むと同じコメントが各ページへ複製され、別文書のものとして扱われる）。
+var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
+var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.13";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.14";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -90,6 +93,7 @@ var CSS = ""
 // border-box を敷いていないページでは width:100% の入力欄が padding と border のぶん
 // はみ出す（実測18px）。対象ページ側へは影響させないよう、rvの要素だけに閉じる。
 +"#rvbar,#rvbar *,#rvpop,#rvpop *,#rvdonepanel,#rvdonepanel *,#rvorphan,#rvorphan *,"
++"#rvguide,#rvguide *,"
 +"#rvtoast,#rvmarks,#rvmarks *,#rvsel,#rvsel *,#rvhover,#rvhover *,#rvcrop,#rvcrop *"
 +"{box-sizing:border-box}"
 +"mark.rv{background:var(--rv-mark,#e9f7f9);border-bottom:2px solid var(--rv-accent,var(--accent,#006f83));"
@@ -178,7 +182,22 @@ var CSS = ""
 +"#rvcrop span{position:absolute;bottom:-22px;right:0;background:var(--rv-inverse,var(--surface-dark,#000000));"
 +"color:var(--rv-on-inverse,#ffffff);font-size:10px;padding:2px 8px;border-radius:999px;white-space:nowrap;"
 +"font-family:ui-monospace,Menlo,monospace}"
-+"@media print{#rvbar,#rvpop,#rvtoast,#rvdonepanel,#rvmarks,#rvsel,#rvhover,#rvcrop"
+// 初回ガイド。バー（右下）と済みパネル（右下・バーの上）と重ならないよう左下に置く。
++"#rvguide{position:fixed;left:20px;bottom:20px;z-index:2147483641;"
++"width:300px;max-width:calc(100vw - 40px);"
++"background:var(--rv-surface,var(--canvas,#ffffff));color:var(--rv-text,var(--ink,#1a1a1a));"
++"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-left:3px solid var(--rv-accent,var(--coral,#006f83));"
++"border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.65;"
++"box-shadow:0 8px 26px rgba(0,0,0,.18);display:none}"
++"#rvguidestep{font-size:11px;letter-spacing:.06em;color:var(--rv-text-muted,var(--muted,#767676));"
++"font-family:ui-monospace,Menlo,monospace;margin-bottom:4px}"
++"#rvguidetxt{margin:0 0 10px}"
++"#rvguide .row{display:flex;gap:6px;justify-content:flex-end;align-items:center}"
++"#rvguide button{font:inherit;font-size:12px;border:0;border-radius:6px;padding:5px 12px;"
++"cursor:pointer;background:var(--rv-accent,var(--coral,#006f83));color:#fff}"
++"#rvguide button.ghost{background:transparent;color:var(--rv-text-muted,var(--muted,#767676));padding:5px 6px}"
++"#rvguide button.ghost:hover{color:var(--rv-text,var(--ink,#1a1a1a))}"
++"@media print{#rvbar,#rvpop,#rvtoast,#rvdonepanel,#rvmarks,#rvsel,#rvhover,#rvcrop,#rvguide"
 +"{display:none !important}}";
 
 function injectCSS(){
@@ -192,7 +211,8 @@ function injectCSS(){
 var RV_RESERVED_IDS = ["rvorphan","rvbar","rvcount","rvdone","rvcopy","rvexport","rvpick","rvclear",
   "rvpop","rvquote","rvimgs","rvnote","rvdel","rvcancel","rvsave","rvdonepanel","rvdonelist","rvdir",
   "rvthread",
-  "rvmarks","rvsel","rvcrop","rvhover","rvtoast"];
+  "rvmarks","rvsel","rvcrop","rvhover","rvtoast",
+  "rvguide","rvguidetxt","rvguidestep","rvguidenext","rvguideskip"];
 function rvCollisions(){
   var found = [];
   RV_RESERVED_IDS.forEach(function(id){ if(document.getElementById(id)) found.push("#" + id); });
@@ -249,7 +269,8 @@ function buildDOM(){
   var doneBtn = document.createElement("button"); doneBtn.id = "rvdone"; doneBtn.className = "ghost";
   doneBtn.textContent = "済み"; doneBtn.style.display = "none";
   var copyBtn = document.createElement("button"); copyBtn.id = "rvcopy"; copyBtn.textContent = "コピー";
-  var exportBtn = document.createElement("button"); exportBtn.id = "rvexport"; exportBtn.textContent = "書き出し";
+  var exportBtn = document.createElement("button"); exportBtn.id = "rvexport"; exportBtn.textContent = "zip";
+  exportBtn.title = "元HTML・review.md・添付画像をまとめてzipで保存する（別のPCや別の人へ渡すとき）";
   var pickBtn = document.createElement("button"); pickBtn.id = "rvpick"; pickBtn.className = "ghost"; pickBtn.textContent = "枠";
   pickBtn.title = "次の1クリックで枠（表・カード・図など）を選ぶ。Option+クリックでも同じ";
   var clearBtn = document.createElement("button"); clearBtn.id = "rvclear"; clearBtn.className = "ghost"; clearBtn.textContent = "消去";
@@ -309,6 +330,58 @@ function buildDOM(){
   // rvtoast
   var toastEl = document.createElement("div"); toastEl.id = "rvtoast";
   document.body.appendChild(toastEl);
+
+  // rvguide（初回だけ出る手順の案内。左下＝バーと済みパネルの反対側）
+  var guide = document.createElement("div"); guide.id = "rvguide";
+  var gstep = document.createElement("div"); gstep.id = "rvguidestep";
+  var gtxt = document.createElement("p"); gtxt.id = "rvguidetxt";
+  var grow = document.createElement("div"); grow.className = "row";
+  var gskip = document.createElement("button"); gskip.id = "rvguideskip"; gskip.className = "ghost";
+  gskip.textContent = "もう出さない";
+  var gnext = document.createElement("button"); gnext.id = "rvguidenext"; gnext.textContent = "次へ";
+  grow.appendChild(gskip); grow.appendChild(gnext);
+  guide.appendChild(gstep); guide.appendChild(gtxt); guide.appendChild(grow);
+  document.body.appendChild(guide);
+}
+
+// ---------- 初回ガイド ----------
+// 出すのは「このブラウザで初めてレビュー層を開いた人」だけ。読むのでなく実際に手を動かして
+// もらうため、各ステップは対応する操作が実際に起きたときに自動で進む（「次へ」は逃げ道）。
+// 手順を進めたかどうかの記録はページ別ではなくオリジン単位＝別のページを開き直しても
+// 同じ案内を最初から見せない。
+var GUIDE_STEPS = [
+  "本文をドラッグして選ぶと、その場にコメント欄が開く。気になった一文を選んでみて",
+  "気づいたことを書いて〈保存〉。選んだところに印と番号が付く",
+  "表・カード・図はドラッグでは選べない。バーの〈枠〉を押してからクリックすると丸ごと選べる",
+  "書き終えたらバーの〈コピー〉。AIにそのまま貼ると、直したうえで対応済みの印まで入れて返してくる"
+];
+function guideSeen(){
+  try{ return localStorage.getItem(GUIDE_KEY) === "done"; }catch(e){ return true; }
+}
+function guideFinish(msg){
+  guideStep = 0;
+  var g = document.getElementById("rvguide");
+  if(g) g.style.display = "none";
+  try{ localStorage.setItem(GUIDE_KEY, "done"); }catch(e){}
+  if(msg) toast(msg);
+}
+function guideRender(){
+  var g = document.getElementById("rvguide");
+  if(!g) return;
+  if(!guideStep){ g.style.display = "none"; return; }
+  document.getElementById("rvguidestep").textContent = "使い方 " + guideStep + " / " + GUIDE_STEPS.length;
+  document.getElementById("rvguidetxt").textContent = GUIDE_STEPS[guideStep - 1];
+  document.getElementById("rvguidenext").textContent = guideStep === GUIDE_STEPS.length ? "終わり" : "次へ";
+  g.style.display = "block";
+}
+// 引数のstepと今のstepが一致したときだけ進む。操作の順番が前後しても飛ばさない。
+function guideAdvance(step){
+  if(guideStep !== step) return;
+  if(guideStep >= GUIDE_STEPS.length){ guideFinish("使い方はここまで。次からは出ない"); return; }
+  guideStep++; guideRender();
+}
+function guideStart(){
+  guideStep = 1; guideRender();
 }
 
 function toast(msg){
@@ -862,7 +935,7 @@ function copyText(){
 // documentElementを丸ごとクローンしてから注釈UIだけ取り除く。ライブDOMには触れない。
 function stripRvChrome(docEl){
   var chrome = docEl.querySelectorAll(
-    "#rvbar,#rvpop,#rvtoast,#rvdonepanel,#rvorphan,#rvmarks,#rvsel,#rvhover,#rvcrop");
+    "#rvbar,#rvpop,#rvtoast,#rvdonepanel,#rvorphan,#rvmarks,#rvsel,#rvhover,#rvcrop,#rvguide");
   for(var i=0;i<chrome.length;i++){
     if(chrome[i].parentNode) chrome[i].parentNode.removeChild(chrome[i]);
   }
@@ -1120,6 +1193,8 @@ function exportReview(){
 
 window.__rv = {
   version: RV_VERSION,
+  // 使い方ガイドをもう一度出す（デモや録画の撮り直し用）。
+  guide: function(){ try{ localStorage.removeItem(GUIDE_KEY); }catch(e){} guideStart(); },
   get store(){ return store; },
   get memoryOnly(){ return memoryOnly; },
   copyText: copyText
@@ -1455,7 +1530,7 @@ function isRvNode(el){
     (el.tagName === "MARK" && el.classList && el.classList.contains("rv"))));
 }
 function isRvChrome(el){
-  return !!(el && el.closest && el.closest("#rvbar,#rvpop,#rvtoast,#rvdonepanel,#rvorphan,#rvmarks,#rvhover,#rvcrop"));
+  return !!(el && el.closest && el.closest("#rvbar,#rvpop,#rvtoast,#rvdonepanel,#rvorphan,#rvmarks,#rvhover,#rvcrop,#rvguide"));
 }
 // ROOTからの位置。rvが差し込んだ要素は数に入れない（#rvorphanでズレるのを避ける）
 function blockPath(el){
@@ -1969,6 +2044,7 @@ function bindEvents(){
     pending = {quote:range.toString(), before:before, after:after, pos:raw,
       heading:headingOf(range.startContainer)};
     editing = null;
+    guideAdvance(1);
     var rect = range.getBoundingClientRect();
     drawPendingSel(range);
     openPop(rect.left + rect.width/2, rect.bottom, pending.quote, "", []);
@@ -2047,7 +2123,10 @@ function bindEvents(){
           status:"open", created:nowISO()});
       }
     }
+    var savedKind = pending && pending.kind;
     save(); closePop(); render(); window.getSelection().removeAllRanges();
+    guideAdvance(2);
+    if(savedKind === "block" || savedKind === "crop") guideAdvance(3);
     if(reopened) toast(reopened);
   };
   document.getElementById("rvdel").onclick = function(){
@@ -2057,6 +2136,8 @@ function bindEvents(){
     save(); closePop(); render();
   };
   document.getElementById("rvcancel").onclick = tryClose;
+  document.getElementById("rvguideskip").onclick = function(){ guideFinish("使い方は出さない。バーのボタンはhoverで説明が出る"); };
+  document.getElementById("rvguidenext").onclick = function(){ guideAdvance(guideStep); };
   document.getElementById("rvclear").onclick = function(){
     if(!store.comments.length){ toast("コメントはありません"); return; }
     if(!confirm("コメント" + store.comments.length + "件を全部消します。いい？")) return;
@@ -2067,6 +2148,7 @@ function bindEvents(){
   document.getElementById("rvcopy").onclick = function(){
     var out = copyText();
     if(!out){ toast("未済みコメントはありません"); return; }
+    guideAdvance(4);
     navigator.clipboard.writeText(out).then(function(){
       toast("コピーしました。チャットに貼ってください");
     }, function(){
@@ -2086,7 +2168,7 @@ function bindEvents(){
                      "rv-" + docSlug() + "-comments.txt");
         toast("コピーできないので、テキストで書き出しました");
       }catch(e2){
-        toast("コピーできませんでした。「書き出し」を使ってください");
+        toast("コピーできませんでした。バーの〈zip〉から保存してください");
       }
     });
   };
@@ -2301,6 +2383,8 @@ function init(){
   if(dirPickerAvailable()) dirIfAllowed().then(setImageDir);
   console.info("[rv] レビュー注釈レイヤー v" + RV_VERSION + " / 画像の保存先フォルダ: " +
     (dirPickerAvailable() ? "選べる" : "このブラウザでは使えない（ダウンロードへ落ちる）"));
+  // 初めて開いた人にだけ手順を出す。2回目以降・スキップ済みなら何も足さない
+  if(!guideSeen()) guideStart();
   render();
 }
 

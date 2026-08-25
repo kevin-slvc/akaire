@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>社内の問い合わせ対応をどう減らすか</title>
+<style>
+/*
+ * デジタル庁デザインシステム（DADS）準拠テンプレート
+ *
+ * 「デジタル庁が作成・監修したものではありません」。DADSの公開トークンを参照して
+ * 独自に組んだテンプレートです（design.digital.go.jp/dads とは無関係の第三者制作物）。
+ *
+ * 配色・フォントサイズ・行間・余白の値は、以下の一次情報から取得（2026-08-19時点）:
+ *  - https://design.digital.go.jp/dads/foundations/color/color-palette/
+ *    （ページ本文は「実際のカラーデータはFigmaを参照」と明記。実HEX値は下記の配布
+ *    パッケージから取得した）
+ *  - https://unpkg.com/@digital-go-jp/design-tokens/dist/tokens-simple.css
+ *    （実HEX値・フォントファミリー変数の一次ソース。npm: @digital-go-jp/design-tokens）
+ *  - https://design.digital.go.jp/dads/foundations/typography/
+ *    （フォントサイズスケール・フォントウェイト・行間の値）
+ *  - https://design.digital.go.jp/dads/foundations/spacing/
+ *    （余白の基本単位=8px）
+ *
+ * 日本語フォントの正式指定は "Noto Sans JP" だが、本テンプレートは外部フォント・
+ * 外部CDNを一切使わない方針のため、システムフォントスタックで代替している
+ * （--font-sans参照）。角丸(--radius)はDADSのトークンとして確認できなかったため、
+ * このテンプレート独自に採用した値（DADS由来ではない）。
+ */
+:root{
+  /* --- キーカラー（DADS blue系。primitive-blue-700を基準） --- */
+  --color-primary:#264af4;
+  --color-primary-hover:#0031d8;
+  --color-primary-active:#0017c1;
+  --color-primary-bg:#e8f1fe;
+
+  /* --- ニュートラル --- */
+  --color-bg:#ffffff;
+  --color-bg-subtle:#f2f2f2;
+  --color-surface:#ffffff;
+  --color-border:#cccccc;
+  --color-border-strong:#999999;
+  --color-text:#1a1a1a;
+  --color-text-muted:#767676;   /* gray-536。白背景に対しWCAG AA(4.5:1)を満たす */
+  --color-text-inverse:#ffffff;
+
+  /* --- 機能色 --- */
+  --color-success:#197a4b;
+  --color-success-bg:#e6f5ec;
+  --color-error:#ec0000;
+  --color-error-bg:#fdeeee;
+  --color-warning:#b78f00;
+  --color-warning-bg:#fbf5e0;
+
+  /* --- 書体（Noto Sans JP / Noto Sans Monoの代替スタック） --- */
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN",
+    "Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+
+  /* --- フォントサイズ（DADSスケールの部分集合） --- */
+  --text-h1:32px;
+  --text-h2:24px;
+  --text-h3:20px;
+  --text-h4:18px;
+  --text-body:16px;
+  --text-small:14px;
+
+  /* --- 行間 --- */
+  --leading-heading:1.4;
+  --leading-body:1.7;
+  --leading-dense:1.3;
+
+  /* --- 余白（基本単位8px） --- */
+  --space-1:8px;
+  --space-2:16px;
+  --space-3:24px;
+  --space-4:32px;
+  --space-5:40px;
+  --space-6:48px;
+  --space-8:64px;
+
+  /* --- その他（DADS由来ではない独自値） --- */
+  --radius:4px;
+  --max-width:960px;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--color-bg);
+  color:var(--color-text);
+  font-family:var(--font-sans);
+  font-size:var(--text-body);
+  line-height:var(--leading-body);
+}
+h1,h2,h3,h4{
+  font-weight:700;
+  line-height:var(--leading-heading);
+  margin:0 0 var(--space-2);
+}
+h1{font-size:var(--text-h1)}
+h2{font-size:var(--text-h2)}
+h3{font-size:var(--text-h3)}
+h4{font-size:var(--text-h4)}
+p{margin:0 0 var(--space-2)}
+a{color:var(--color-primary)}
+a:hover{color:var(--color-primary-hover)}
+a:active{color:var(--color-primary-active)}
+code,pre{font-family:var(--font-mono);font-size:0.9em}
+ul,ol{margin:0 0 var(--space-2);padding-left:1.4em;line-height:var(--leading-body)}
+li+li{margin-top:.4em}
+
+/* --- レイアウト --- */
+.header{
+  border-bottom:1px solid var(--color-border);
+  background:var(--color-surface);
+}
+.header .wrap{padding:var(--space-3) var(--space-3)}
+.header .eyebrow{
+  font-size:var(--text-small);
+  color:var(--color-text-muted);
+  margin:0 0 4px;
+}
+.header h1{margin:0}
+.wrap{max-width:var(--max-width);margin:0 auto;padding-left:var(--space-3);padding-right:var(--space-3)}
+.section{padding:var(--space-6) 0}
+.section+.section{border-top:1px solid var(--color-border)}
+.section .lead{
+  font-size:var(--text-h4);
+  color:var(--color-text-muted);
+  line-height:var(--leading-body);
+  max-width:640px;
+}
+
+/* --- カード --- */
+.cards{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:var(--space-3);
+  margin-top:var(--space-4);
+}
+.card{
+  border:1px solid var(--color-border);
+  border-radius:var(--radius);
+  padding:var(--space-3);
+  background:var(--color-surface);
+}
+.card .num{
+  display:inline-block;
+  font-family:var(--font-mono);
+  font-size:var(--text-small);
+  color:var(--color-primary);
+  background:var(--color-primary-bg);
+  border-radius:999px;
+  padding:2px 10px;
+  margin-bottom:var(--space-2);
+}
+.card h3{margin-bottom:var(--space-1)}
+.card p{margin-bottom:0;color:var(--color-text-muted);font-size:var(--text-small)}
+
+/* --- 表 --- */
+.table-scroll{overflow-x:auto;margin-top:var(--space-3)}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:var(--text-small);
+  min-width:480px;
+}
+th,td{
+  text-align:left;
+  padding:var(--space-1) var(--space-2);
+  border-bottom:1px solid var(--color-border);
+}
+thead th{
+  background:var(--color-bg-subtle);
+  font-weight:700;
+  white-space:nowrap;
+}
+tbody tr:hover{background:var(--color-bg-subtle)}
+.badge{
+  display:inline-block;
+  font-size:12px;
+  padding:1px 8px;
+  border-radius:999px;
+}
+.badge.ok{background:var(--color-success-bg);color:var(--color-success)}
+.badge.warn{background:var(--color-warning-bg);color:var(--color-warning)}
+.badge.ng{background:var(--color-error-bg);color:var(--color-error)}
+
+/* --- 引用 --- */
+blockquote{
+  margin:var(--space-4) 0 0;
+  padding:var(--space-2) var(--space-3);
+  border-left:3px solid var(--color-primary);
+  background:var(--color-bg-subtle);
+  border-radius:0 var(--radius) var(--radius) 0;
+  color:var(--color-text);
+}
+blockquote p:last-child{margin-bottom:0}
+blockquote cite{
+  display:block;
+  margin-top:var(--space-1);
+  font-size:var(--text-small);
+  color:var(--color-text-muted);
+  font-style:normal;
+}
+
+/* --- フッター --- */
+.footer{
+  border-top:1px solid var(--color-border);
+  background:var(--color-bg-subtle);
+  color:var(--color-text-muted);
+  font-size:var(--text-small);
+}
+.footer .wrap{padding:var(--space-4) var(--space-3)}
+
+@media (max-width:600px){
+  :root{--text-h1:26px;--text-h2:20px}
+  .header .wrap,.wrap{padding-left:var(--space-2);padding-right:var(--space-2)}
+}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="wrap">
+    <p class="eyebrow">デモ用のサンプルページ（内容は説明のための例）</p>
+    <h1>社内の問い合わせ対応をどう減らすか</h1>
+  </div>
+</header>
+
+<main>
+<section class="section" id="intro">
+  <div class="wrap">
+    <h2>導入</h2>
+    <p class="lead">
+      問い合わせの数そのものを減らす前に、同じ質問が何度も来る経路を先に塞ぐ。
+      窓口を1本にするより、答えが置いてある場所を1つにするほうが効く。
+    </p>
+    <p>
+      直近3か月の問い合わせを内容で分けると、上位3種で全体の半分を超える。
+      この3種はいずれも手順書が存在するが、置き場所が3か所に分かれていて、
+      聞いたほうが早い状態になっている。
+    </p>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="wrap">
+    <h2>ポイント</h2>
+    <p class="lead">まず手をつける3つ。</p>
+    <div class="cards">
+      <div class="card">
+        <span class="num">01</span>
+        <h3>置き場所を1つにする</h3>
+        <p>手順書を1か所へ寄せ、他の場所からはリンクだけを残す。</p>
+      </div>
+      <div class="card">
+        <span class="num">02</span>
+        <h3>上位3種だけ先に書き直す</h3>
+        <p>全部は直さない。件数の多い3種に絞って、答えを先頭に置く。</p>
+      </div>
+      <div class="card">
+        <span class="num">03</span>
+        <h3>週次で件数を見る</h3>
+        <p>減ったかどうかを件数で見る。感覚で判断しない。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="detail-table">
+  <div class="wrap">
+    <h2>詳細（表）</h2>
+    <p class="lead">横に長い表は <code>.table-scroll</code> でラップし、ページ本体を
+      横スクロールさせず表側だけスクロールさせる。</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>項目</th><th>内容</th><th>担当</th><th>状態</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>問い合わせの分類</td><td>直近3か月ぶんを内容で仕分けた</td><td>運用担当</td><td><span class="badge ok">完了</span></td></tr>
+          <tr><td>手順書の集約</td><td>3か所に散っている置き場を1つへ寄せる</td><td>運用担当</td><td><span class="badge warn">進行中</span></td></tr>
+          <tr><td>件数の定点観測</td><td>週次で分類別の件数を出す</td><td>未定</td><td><span class="badge ng">未着手</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="notes">
+  <div class="wrap">
+    <h2>補足</h2>
+    <ul>
+      <li>窓口の一本化は今回はやらない（人の配置が変わるため）</li>
+      <li>手順書の中身の正しさは、書いた人の確認を通してから寄せる</li>
+      <li>件数が減らなければ、分類のしかたから見直す</li>
+    </ul>
+    <blockquote>
+      <p>このページはレビュー注釈レイヤーのデモ用に作った例で、実在の組織・数値ではない。</p>
+      <cite>出典・発言者名、YYYY-MM-DD</cite>
+    </blockquote>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>レビュー注釈レイヤー デモページ</p>
+  </div>
+</footer>
+
+<script src="../rv-layer.js"></script>
+</body>
+</html>
