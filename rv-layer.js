@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.12
+ * レビュー注釈レイヤー v1.13
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -51,13 +51,14 @@ var ENABLE_KEY = "rv-layer:enabled";
 // どのページのものか判別できない。最初に取り込んだページを記録し、他のパスでは
 // 二度と読まない（読むと同じコメントが各ページへ複製され、別文書のものとして扱われる）。
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.12";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.13";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
 var memoryOnly = false;   // localStorage が使えない環境でのフォールバック
 var noOverwrite = false;  // 読めない保存データがある。上書きしないため書き込みを止める
 var seenIds = {};         // このタブが一度でも見た/作ったコメントID。他タブ由来かを見分ける
+var touchedIds = {};      // このタブで内容・状態・画像を変更したコメントID
 var quarantined = [];     // 壊れていて読み込めなかったコメント（捨てずに持っておく）
 var editing = null;       // 編集中コメントid
 var pending = null;       // 未保存の新規選択
@@ -418,8 +419,27 @@ function load(){
 }
 // 同じページを2つのタブで開くと、どちらも「開いた時点の store」を丸ごと持つ。
 // そのまま setItem すると、もう一方のタブが足したコメントが警告なく消える。
-// 書く直前にディスクの最新を読み、このタブが一度も見ていないIDだけ取り込む。
+// 書く直前にディスクの最新を読み、このタブで触っていない既知IDはディスク側へ更新する。
+// このタブで触ったIDは手元を残すが、追記だけは両方を失わないよう和集合にする。
 // 「見たことがあるのに今の store に無い」＝このタブで削除した分なので、復活させない。
+function touchComment(id){ if(id) touchedIds[id] = true; }
+function mergeReplies(local, disk){
+  var merged = [], keys = {};
+  function add(r){
+    if(!r || typeof r !== "object") return;
+    var hasId = r.id != null && r.id !== "";
+    var key = hasId ? "id:" + r.id : "body:" + (r.created || "") + "\n" + (r.text || "");
+    if(keys[key]) return;
+    keys[key] = true; merged.push(r);
+  }
+  (local || []).forEach(add);
+  (disk || []).forEach(add);
+  merged.sort(function(a, b){
+    var ac = a.created || "", bc = b.created || "";
+    return ac < bc ? -1 : ac > bc ? 1 : 0;
+  });
+  return merged;
+}
 function mergeWithStored(){
   var raw, o;
   try{ raw = localStorage.getItem(KEY); }catch(e){ return; }
@@ -428,8 +448,20 @@ function mergeWithStored(){
   if(!o || o.docId !== DOC || !Array.isArray(o.comments)) return;
   var adopted = 0;
   sanitizeComments(o.comments).forEach(function(c){
-    if(seenIds[c.id]) return;
-    store.comments.push(c); seenIds[c.id] = true; adopted++;
+    if(!seenIds[c.id]){
+      store.comments.push(c); seenIds[c.id] = true; adopted++;
+      return;
+    }
+    var at = -1;
+    for(var i=0;i<store.comments.length;i++){
+      if(store.comments[i].id === c.id){ at = i; break; }
+    }
+    if(at === -1) return;
+    if(!touchedIds[c.id]){
+      store.comments[at] = c;
+      return;
+    }
+    store.comments[at].replies = mergeReplies(store.comments[at].replies, c.replies);
   });
   if(Array.isArray(o.appliedRevs)){
     o.appliedRevs.forEach(function(r){
@@ -495,6 +527,7 @@ function applyResolved(){
   var n = 0;
   store.comments.forEach(function(c){
     if(c.status === "open" && r.ids.indexOf(c.id) !== -1){
+      touchComment(c.id);
       c.status = "done"; c.resolvedRev = r.rev; c.resolvedAt = nowISO(); n++;
     }
   });
@@ -771,6 +804,7 @@ function renderDonePanel(){
     // 読むだけなら状態を変えさせない。「戻す」を押さないと中身が読めないのを避ける
     txt.onclick = function(ev){
       ev.stopPropagation();
+      if(pop.style.display === "block" && !tryClose()) return;
       editing = c.id; pending = null; editingBody = false;
       var r = row.getBoundingClientRect();
       openPop(r.left + Math.min(r.width / 2, 140), r.top, c.quote, c.note, c.images);
@@ -778,6 +812,7 @@ function renderDonePanel(){
     var btn = document.createElement("button");
     btn.textContent = "戻す";
     btn.onclick = function(){
+      touchComment(c.id);
       c.status = "open"; save(); render(); toast("戻しました");
     };
     row.appendChild(txt); row.appendChild(btn);
@@ -1270,7 +1305,11 @@ function renderPopImgs(){
     el.alt = im.name || ("画像" + (i+1));
     var del = document.createElement("button");
     del.type = "button"; del.textContent = "×"; del.title = "この画像を外す";
-    del.onclick = function(ev){ ev.stopPropagation(); popImgs.splice(i, 1); renderPopImgs(); };
+    del.onclick = function(ev){
+      ev.stopPropagation();
+      touchComment(editing);
+      popImgs.splice(i, 1); renderPopImgs();
+    };
     fig.appendChild(el); fig.appendChild(del);
     box.appendChild(fig);
   });
@@ -1297,6 +1336,7 @@ function addImage(file){
       cv.height = Math.max(1, Math.round(img.height * sc));
       cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
       var ext = imageExt(file.type, file.name);
+      touchComment(editing);
       popImgs.push({name:null, ext:ext, data:reader.result, blob:file, thumb:cv.toDataURL("image/jpeg", 0.6)});
       renderPopImgs();
       toast("画像を1枚つけました");
@@ -1681,6 +1721,7 @@ function cropLabel(o){
          (o.inner ? "「" + o.inner + "」" : "");
 }
 function startCropComment(r){
+  if(pop.style.display === "block" && !tryClose()) return;
   var base = baseFor(r), b = base.getBoundingClientRect(), f = flat();
   var bx = b.left + window.scrollX, by = b.top + window.scrollY;
   editing = null;
@@ -1716,6 +1757,7 @@ function exitPick(){
   showHover(null); showCrop(null);
 }
 function startBlockComment(el){
+  if(pop.style.display === "block" && !tryClose()) return;
   var f = flat();
   editing = null;
   pending = {kind:"block", heading:headingOf(el), path:blockPath(el), tag:el.tagName,
@@ -1749,6 +1791,7 @@ function drawBlockBoxes(){
     b.type = "button"; b.className = "rvbadge"; b.textContent = String(it.n);
     b.onclick = function(ev){
       ev.stopPropagation();
+      if(pop.style.display === "block" && !tryClose()) return;
       editing = it.c.id; pending = null;
       openPop(g.left - window.scrollX + Math.min(g.width/2, 220),
               g.top - window.scrollY + 26, it.c.quote, it.c.note, it.c.images);
@@ -1820,6 +1863,7 @@ function renderThread(){
     del.textContent = "×"; del.title = "この追記を消す";
     del.onclick = function(ev){
       ev.stopPropagation();
+      touchComment(c.id);
       c.replies.splice(i, 1); save(); renderThread(); render();
     };
     row.appendChild(t); row.appendChild(del);
@@ -1863,6 +1907,16 @@ function closePop(){
   var th = document.getElementById("rvthread"); if(th){ th.innerHTML = ""; th.style.display = "none"; }
   var box = document.getElementById("rvimgs"); if(box) box.innerHTML = "";
 }
+function tryClose(){
+  if(hasUnsavedDraft() && !escArmed){
+    escArmed = true;
+    toast("書きかけがあります。もう一度操作すると破棄します");
+    setTimeout(function(){ escArmed = false; }, 4000);
+    return false;
+  }
+  closePop();
+  return true;
+}
 
 function bindEvents(){
   document.addEventListener("mouseup", function(ev){
@@ -1888,13 +1942,14 @@ function bindEvents(){
     if(m){
       var c = store.comments.filter(function(x){ return x.id === m.dataset.id; })[0];
       if(c){
+        if(pop.style.display === "block" && !tryClose()) return;
         editing = c.id; pending = null;
         var r = m.getBoundingClientRect();
         openPop(r.left + r.width/2, r.bottom, c.quote, c.note, c.images); return;
       }
     }
     var sel = window.getSelection();
-    if(!sel || sel.isCollapsed || sel.rangeCount === 0){ if(!editing) closePop(); return; }
+    if(!sel || sel.isCollapsed || sel.rangeCount === 0){ if(!editing) tryClose(); return; }
     var range = sel.getRangeAt(0);
     if(!ROOT.contains(range.commonAncestorContainer)) return;
     // 通常のブロック越えは従来通り切る。flex/gridの別アイテム越えはコンテナまで許す。
@@ -1906,6 +1961,7 @@ function bindEvents(){
     var quote = range.toString().replace(/\s+/g, " ").trim();
     // 1文字だけの選択も受ける。空白だけの微小ドラッグは正規化で空文字になるのでここで落ちる
     if(!quote) return;
+    if(pop.style.display === "block" && !tryClose()) return;
     var f = flat();
     var raw = flatOffset(f, range.startContainer, range.startOffset);
     var before = raw >= 0 ? f.text.slice(Math.max(0, raw-CTX), raw) : "";
@@ -1953,6 +2009,7 @@ function bindEvents(){
     if(!note && !popImgs.length){ toast("コメントが空です"); return; }
     var reopened = null;
     if(editing){
+      touchComment(editing);
       var imgsE = flushImages(editing);
       store.comments.forEach(function(c){
         if(c.id !== editing) return;
@@ -1973,6 +2030,7 @@ function bindEvents(){
     } else if(pending){
       var id = newCommentId();
       seenIds[id] = true;
+      touchComment(id);
       var imgsN = flushImages(id);
       if(pending.kind === "crop"){
         store.comments.push({id:id, kind:"crop", heading:pending.heading, quote:cropLabel(pending),
@@ -1993,14 +2051,16 @@ function bindEvents(){
     if(reopened) toast(reopened);
   };
   document.getElementById("rvdel").onclick = function(){
+    touchComment(editing);
     deleteCommentImages(store.comments.filter(function(c){ return c.id === editing; }));
     store.comments = store.comments.filter(function(c){ return c.id !== editing; });
     save(); closePop(); render();
   };
-  document.getElementById("rvcancel").onclick = closePop;
+  document.getElementById("rvcancel").onclick = tryClose;
   document.getElementById("rvclear").onclick = function(){
     if(!store.comments.length){ toast("コメントはありません"); return; }
     if(!confirm("コメント" + store.comments.length + "件を全部消します。いい？")) return;
+    store.comments.forEach(function(c){ touchComment(c.id); });
     deleteCommentImages(store.comments);
     store.comments = []; store.appliedRevs = []; save(); render(); toast("消しました");
   };
@@ -2110,14 +2170,8 @@ function bindEvents(){
     }
     if(e.key === "Escape" && picking){ exitPick(); return; }
     if(e.key === "Escape"){
-      // 書きかけを1回のEscで消さない。押した本人が消したつもりでないことがある
-      if(hasUnsavedDraft() && !escArmed){
-        escArmed = true;
-        toast("書きかけがあります。もう一度Escで破棄します");
-        setTimeout(function(){ escArmed = false; }, 4000);
-        return;
-      }
-      closePop();
+      // 書きかけを1回の操作で消さない。押した本人が消したつもりでないことがある
+      if(!tryClose()) return;
       var dp = document.getElementById("rvdonepanel");
       if(dp) dp.style.display = "none";
     }
@@ -2160,7 +2214,7 @@ function dropMark(){
     // ?rv=1 と一緒にアンカーを渡されると行き先が消えていた。
     var h = (location.hash || "");
     if(h.toLowerCase() === "#rv" || h.toLowerCase() === "#rv-off") h = "";
-    history.replaceState(null, "", location.pathname + q + h);
+    history.replaceState(history.state, "", location.pathname + q + h);
   }catch(e){}
 }
 
