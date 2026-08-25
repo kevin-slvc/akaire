@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.15
+ * レビュー注釈レイヤー v1.16
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -54,13 +54,14 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.15";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.16";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
 var memoryOnly = false;   // localStorage が使えない環境でのフォールバック
 var noOverwrite = false;  // 読めない保存データがある。上書きしないため書き込みを止める
 var seenIds = {};         // このタブが一度でも見た/作ったコメントID。他タブ由来かを見分ける
+var seenReplyKeys = {};   // 見た追記が手元に無ければ、このタブで削除したものとして復活を防ぐ
 var touchedIds = {};      // このタブで内容・状態・画像を変更したコメントID
 var quarantined = [];     // 壊れていて読み込めなかったコメント（捨てずに持っておく）
 var editing = null;       // 編集中コメントid
@@ -489,25 +490,39 @@ function load(){
     memoryOnly = true;
     console.warn("[rv] localStorage 不可。今開いている間だけ保持します。", e);
   }
-  store.comments.forEach(function(c){ seenIds[c.id] = true; });
+  store.comments.forEach(function(c){
+    seenIds[c.id] = true;
+    (c.replies || []).forEach(markReplySeen);
+  });
 }
 // 同じページを2つのタブで開くと、どちらも「開いた時点の store」を丸ごと持つ。
 // そのまま setItem すると、もう一方のタブが足したコメントが警告なく消える。
 // 書く直前にディスクの最新を読み、このタブで触っていない既知IDはディスク側へ更新する。
-// このタブで触ったIDは手元を残すが、追記だけは両方を失わないよう和集合にする。
+// このタブで触ったIDは手元を残し、追記は削除済みを除いて両方を失わないよう併合する。
 // 「見たことがあるのに今の store に無い」＝このタブで削除した分なので、復活させない。
 function touchComment(id){ if(id) touchedIds[id] = true; }
+function replyKey(r){
+  // 保存データは壊れていることがある（配列の中身がnullや文字列）。ここで落ちると
+  // load()ごと止まり、正常なコメントまで表示されなくなる
+  if(!r || typeof r !== "object") return null;
+  var hasId = r.id != null && r.id !== "";
+  return hasId ? "id:" + r.id : "body:" + (r.created || "") + "\n" + (r.text || "");
+}
+function markReplySeen(r){
+  var k = replyKey(r);
+  if(k) seenReplyKeys[k] = true;
+}
 function mergeReplies(local, disk){
   var merged = [], keys = {};
-  function add(r){
+  function add(r, fromDisk){
     if(!r || typeof r !== "object") return;
-    var hasId = r.id != null && r.id !== "";
-    var key = hasId ? "id:" + r.id : "body:" + (r.created || "") + "\n" + (r.text || "");
+    var key = replyKey(r);
     if(keys[key]) return;
-    keys[key] = true; merged.push(r);
+    if(fromDisk && seenReplyKeys[key]) return;
+    keys[key] = true; merged.push(r); seenReplyKeys[key] = true;   // 併合で残った分も「見た」
   }
-  (local || []).forEach(add);
-  (disk || []).forEach(add);
+  (local || []).forEach(function(r){ add(r, false); });
+  (disk || []).forEach(function(r){ add(r, true); });
   merged.sort(function(a, b){
     var ac = a.created || "", bc = b.created || "";
     return ac < bc ? -1 : ac > bc ? 1 : 0;
@@ -523,6 +538,7 @@ function mergeWithStored(){
   var adopted = 0;
   sanitizeComments(o.comments).forEach(function(c){
     if(!seenIds[c.id]){
+      (c.replies || []).forEach(markReplySeen);
       store.comments.push(c); seenIds[c.id] = true; adopted++;
       return;
     }
@@ -532,6 +548,7 @@ function mergeWithStored(){
     }
     if(at === -1) return;
     if(!touchedIds[c.id]){
+      (c.replies || []).forEach(markReplySeen);
       store.comments[at] = c;
       return;
     }
@@ -2096,7 +2113,8 @@ function bindEvents(){
           if(!c.replies) c.replies = [];
           // 追記にもIDを振る。IDが無いと保存時の突き合わせが「作成時刻＋本文」しか見られず、
           // 作成時刻は分までしか無いので、同じ分に同じ文面を2回書くと後のほうが消える
-          c.replies.push({id:newCommentId(), text:note, created:nowISO()});
+          var reply = {id:newCommentId(), text:note, created:nowISO()};
+          c.replies.push(reply); markReplySeen(reply);
         }
         // コピー文面は未済みのコメントしか拾わない。済みのまま書き換えるとAIへ届かず、
         // 書いたのに渡らない失敗になる。中身を変えたら未済みへ戻す（読むだけなら保存を押さない）
