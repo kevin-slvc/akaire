@@ -1,0 +1,42 @@
+name: バグ報告
+description: 動かない・壊れる・データが消える
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        セキュリティに関わるものは、ここではなく [SECURITY.md](../blob/main/SECURITY.md) の手順で
+        非公開に報告してください。
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      description: 期待した動作と、実際に起きたこと
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      description: できれば再現するHTMLを貼るか添付してください（`tests/fixtures/` の形が参考になります）
+      placeholder: |
+        1. ○○.html を #rv 付きで開く
+        2. 本文を選択してコメントを保存する
+        3. リロードする
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 環境
+      placeholder: "Chrome 141 / macOS 15、file:// で直接開いた"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: rv-layer.js の版数
+      description: バーにマウスを乗せると出ます。`window.__rv.version` でも取れます
+      placeholder: "1.11"
+    validations:
+      required: true

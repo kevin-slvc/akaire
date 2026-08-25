@@ -1,0 +1,24 @@
+name: 提案
+description: こうしたい・こういう場面で困っている
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) に、入れられないもの
+        （ビルド工程・外部依存・モジュール分割）を書いてあります。先に読んでください。
+  - type: textarea
+    id: problem
+    attributes:
+      label: どういう場面で困っているか
+      description: 解決策より先に、困っている状況を書いてください
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 考えている解決策（あれば）
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 今どう回避しているか

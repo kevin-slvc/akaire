@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: セキュリティの報告
+    url: https://github.com/kevin-slvc/html-review-loop/security/advisories/new
+    about: 公開issueではなく、こちらから非公開で報告してください

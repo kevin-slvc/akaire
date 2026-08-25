@@ -1,0 +1,41 @@
+{
+  "name": "html-review-loop",
+  "version": "1.11.0",
+  "description": "AIが生成した自己完結HTMLに、ブラウザ上で直接コメントを入れ、AIへ渡して直させ、直った分が自動で「済み」へ落ちるレビューの往復を成立させるレイヤー",
+  "license": "MIT",
+  "browser": "rv-layer.js",
+  "files": [
+    "rv-layer.js",
+    "tools/",
+    "specs/",
+    "prompts/",
+    "templates/",
+    "examples/"
+  ],
+  "bin": {
+    "rv-cli": "tools/rv-cli.mjs"
+  },
+  "scripts": {
+    "serve": "python3 -m http.server 8000"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "html",
+    "review",
+    "annotation",
+    "ai",
+    "claude",
+    "codex",
+    "feedback"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevin-slvc/html-review-loop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kevin-slvc/html-review-loop/issues"
+  },
+  "homepage": "https://github.com/kevin-slvc/html-review-loop#readme"
+}
