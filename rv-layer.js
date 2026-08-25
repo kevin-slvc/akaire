@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.14
+ * レビュー注釈レイヤー v1.15
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -54,7 +54,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.14";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.15";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -2094,7 +2094,9 @@ function bindEvents(){
         if(editingBody){ c.note = note; }
         else if(note){
           if(!c.replies) c.replies = [];
-          c.replies.push({text:note, created:nowISO()});
+          // 追記にもIDを振る。IDが無いと保存時の突き合わせが「作成時刻＋本文」しか見られず、
+          // 作成時刻は分までしか無いので、同じ分に同じ文面を2回書くと後のほうが消える
+          c.replies.push({id:newCommentId(), text:note, created:nowISO()});
         }
         // コピー文面は未済みのコメントしか拾わない。済みのまま書き換えるとAIへ届かず、
         // 書いたのに渡らない失敗になる。中身を変えたら未済みへ戻す（読むだけなら保存を押さない）
