@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.16
+ * レビュー注釈レイヤー v1.17
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -54,7 +54,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.16";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.17";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -163,16 +163,16 @@ var CSS = ""
 +"#rvpop.rvdrag{outline:2px dashed var(--rv-accent,var(--coral,#a90000));outline-offset:3px}"
 +"#rvmarks{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483600}"
 +"#rvsel{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483615;pointer-events:none}"
-+"#rvsel .rvselbox{position:absolute;background:rgba(0,111,131,.18);"
++"#rvsel .rvselbox{position:absolute;background:var(--rv-select-fill,rgba(169,0,0,.15));"
 +"border:1px dashed var(--rv-accent,var(--coral,#a90000));border-radius:3px;pointer-events:none}"
 +"#rvmarks .rvbox{position:absolute;border:2px solid var(--rv-accent,var(--coral,#a90000));border-radius:6px;"
-+"background:rgba(0,111,131,.07);pointer-events:none}"
++"background:var(--rv-box-fill,rgba(169,0,0,.06));pointer-events:none}"
 +"#rvmarks .rvbadge{position:absolute;top:-11px;left:-11px;pointer-events:auto;width:22px;height:22px;"
 +"border:0;border-radius:999px;cursor:pointer;background:var(--rv-accent,var(--coral,#a90000));color:#fff;"
 +"font:inherit;font-size:11px;font-weight:700;line-height:22px;padding:0;"
 +"font-family:ui-monospace,Menlo,monospace}"
 +"#rvhover{position:absolute;z-index:2147483610;pointer-events:none;display:none;"
-+"border:2px dashed var(--rv-accent,var(--coral,#a90000));border-radius:6px;background:rgba(0,111,131,.08)}"
++"border:2px dashed var(--rv-accent,var(--coral,#a90000));border-radius:6px;background:var(--rv-hover-fill,rgba(169,0,0,.08))}"
 +"#rvhover span{position:absolute;top:-21px;left:0;background:var(--rv-inverse,var(--surface-dark,#000000));"
 +"color:var(--rv-on-inverse,#ffffff);font-size:10px;padding:2px 8px;border-radius:999px;white-space:nowrap;"
 +"font-family:ui-monospace,Menlo,monospace}"
