@@ -1,5 +1,5 @@
 {
-  "name": "html-review-loop",
+  "name": "akaire",
   "version": "1.14.0",
   "description": "AIが生成した自己完結HTMLに、ブラウザ上で直接コメントを入れ、AIへ渡して直させ、直った分が自動で「済み」へ落ちるレビューの往復を成立させるレイヤー",
   "license": "MIT",
@@ -32,10 +32,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kevin-slvc/html-review-loop.git"
+    "url": "git+https://github.com/kevin-slvc/akaire.git"
   },
   "bugs": {
-    "url": "https://github.com/kevin-slvc/html-review-loop/issues"
+    "url": "https://github.com/kevin-slvc/akaire/issues"
   },
-  "homepage": "https://github.com/kevin-slvc/html-review-loop#readme"
+  "homepage": "https://github.com/kevin-slvc/akaire#readme"
 }

@@ -26,7 +26,7 @@
 ## 報告の仕方
 
 **公開のissueを立てないでほしい。**
-GitHubの [Security Advisories](https://github.com/kevin-slvc/html-review-loop/security/advisories/new)
+GitHubの [Security Advisories](https://github.com/kevin-slvc/akaire/security/advisories/new)
 から非公開で報告してください。
 
 含めてほしいもの: 再現するHTML（最小のもの）、使ったブラウザとバージョン、

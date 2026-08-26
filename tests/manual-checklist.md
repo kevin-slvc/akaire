@@ -10,7 +10,7 @@ Firefoxのいずれか、可能なら2つ以上）で確認する。
 `rv-layer.js`）を読み込む。ブラウザで直接ファイルを開くか、簡易サーバーで配信する。
 
 ```
-cd html-review-loop
+cd akaire
 python3 -m http.server 8000
 # http://localhost:8000/tests/fixtures/repeated-wraps.html#rv を開く
 ```

@@ -1,6 +1,6 @@
 // docs/demo.mp4 を撮り直すためのスクリプト。UIやボタン名を変えたら走らせ直す。
 //
-//   cd html-review-loop
+//   cd akaire
 //   python3 -m http.server 8765 &
 //   npm i -D playwright && npx playwright install chromium
 //   node tools/record-demo.mjs ./out          # out/ にwebmが出る
