@@ -8,8 +8,9 @@
 //     -pix_fmt yuv420p -crf 26 -movflags +faststart -an docs/demo.mp4
 //
 // 撮るのは docs/demo-page.html（テンプレートに例の文章を入れただけのデモ用ページ）。
-// 字幕はページへ差し込む固定の帯で、録画にそのまま焼き付く。マウスは見えないので
-// 赤い点を追従させている。どちらもデモ専用で、レビュー層本体とは関係がない。
+// 字幕は映像に焼き付けず、docs/*.srt と docs/*.vtt に書き出すだけにしてある（動画編集側で
+// 載せる前提）。RV_BURN_CAP=1 を付けて走らせると、以前と同じく画面上部の帯へ焼き付く。
+// マウスは見えないので赤い点を追従させている。どちらもデモ専用で、レビュー層本体とは関係がない。
 
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
@@ -73,7 +74,10 @@ const run = async () => {
     route.fulfill({status: 200, contentType: 'text/html; charset=utf-8', body});
   });
 
-  const setup = async () => { await page.evaluate(CURSOR); await page.evaluate(CAPTION); };
+  // 字幕は映像に焼き付けない（別途つける前提）。RV_BURN_CAP=1 を付けたときだけ帯を出す。
+  // 帯を出さなくても cap() は cue を記録し続けるので srt/vtt は同じように出る。
+  const BURN = process.env.RV_BURN_CAP === '1';
+  const setup = async () => { await page.evaluate(CURSOR); if (BURN) await page.evaluate(CAPTION); };
   const cap = async (t, ms=0) => {
     await page.evaluate(s => { const d=document.getElementById('__demoCap'); if(d) d.textContent = s; }, t);
     cues.push({start: (Date.now() - t0) / 1000, text: t});

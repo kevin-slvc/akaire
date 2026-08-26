@@ -37,5 +37,8 @@
   "bugs": {
     "url": "https://github.com/kevin-slvc/akaire/issues"
   },
-  "homepage": "https://github.com/kevin-slvc/akaire#readme"
+  "homepage": "https://github.com/kevin-slvc/akaire#readme",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
 }

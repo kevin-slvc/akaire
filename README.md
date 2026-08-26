@@ -12,16 +12,17 @@ HTML側がやることは `</body>` 直前に `<script src>` を1行足すだけ
 
 ![レビュー層が載ったページ。本文に下線と番号が付き、選択した箇所にコメント入力欄が開いている](docs/screenshot.png)
 
-**動画で見る**（どちらも音声なし・字幕は映像に焼き付け済み）:
+**動画で見る**（どちらも音声なし・字幕は焼き付けていない。下の srt / vtt を当てて見る）:
 
-- [docs/demo.mp4](docs/demo.mp4) — 74秒。選ぶ→書く→枠→Option+ドラッグで範囲→コピー→済みへ落ちる、まで
-- [docs/demo-full.mp4](docs/demo-full.mp4) — 2分40秒。上に加えて、画像添付・枠の粒度（↑↓）・追記と書き直し・
+- [docs/demo.mp4](docs/demo.mp4) — 71秒。選ぶ→書く→枠→Option+ドラッグで範囲→コピー→済みへ落ちる、まで
+- [docs/demo-full.mp4](docs/demo-full.mp4) — 2分39秒。上に加えて、画像添付・枠の粒度（↑↓）・追記と書き直し・
   書きかけの保護・zip・済み一覧と戻す・位置を見失ったコメント・消去まで全部
 
 字幕ファイルは [demo.srt](docs/demo.srt) / [demo.vtt](docs/demo.vtt) と
 [demo-full.srt](docs/demo-full.srt) / [demo-full.vtt](docs/demo-full.vtt)。撮り直すときは
 [tools/record-demo.mjs](tools/record-demo.mjs)（引数に `full` を付けると全機能版）を走らせると、
-動画と字幕の両方が出る。
+動画と字幕の両方が出る。`RV_BURN_CAP=1` を付けたときだけ、字幕が映像上部の帯へ焼き付く。
+先頭の画像を撮り直すのは [tools/shoot-screenshot.mjs](tools/shoot-screenshot.mjs)。
 
 ## これは何をするものか
 
