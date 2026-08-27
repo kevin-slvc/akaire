@@ -25,6 +25,11 @@ const RESOLVED_RE = /[ \t]*<script\b[^>]*>\s*window\.__rvResolved\s*=[\s\S]*?<\/
 // /g付き正規表現は lastIndex を持ち越すので、判定のたびに戻す
 function has(html) { SCRIPT_RE.lastIndex = 0; return SCRIPT_RE.test(html); }
 
+// 読み込み行が data-rv-default="on" を持っているか。持っていると、読み手が #rv を
+// 打たなくても最初から層が出る＝外部へ出す前に必ず気づきたい状態なので status で言う
+const DEFAULT_RE = /<script[^>]*\bsrc=["'][^"']*rv-layer\.js(?:\?[^"']*)?["'][^>]*\bdata-rv-default=["'](?:on|1|true)["'][^>]*>/i;
+function defaultOn(html) { return DEFAULT_RE.test(html); }
+
 function relLayer(file) {
   let r = relative(dirname(resolve(file)), LAYER).split(sep).join("/");
   return r.startsWith(".") ? r : "./" + r;
@@ -48,15 +53,22 @@ function restore(file) {
   }
   const html = readFileSync(file, "utf8");
   if (has(html)) return `そのまま  ${file}（もう層が入っている）`;
+  // .rvbak が無いときは元の書き方が分からないので、素の1行で戻す。
+  // 外す前が data-rv-default="on" だった場合、その指定はここでは戻らない
   const tag = `<script src="${relLayer(file)}"></script>`;
   const idx = html.toLowerCase().lastIndexOf("</body>");
   const out = idx === -1 ? html + "\n" + tag + "\n"
                          : html.slice(0, idx) + tag + "\n" + html.slice(idx);
   writeFileSync(file, out);
-  return `戻した    ${file}（script 1行を入れ直した）`;
+  return `戻した    ${file}（script 1行を入れ直した。data-rv-default は復元されないので、要るなら書き足す）`;
 }
 
-const status = (file) => `${has(readFileSync(file, "utf8")) ? "層あり" : "層なし"}    ${file}`;
+const status = (file) => {
+  const html = readFileSync(file, "utf8");
+  if (!has(html)) return `層なし          ${file}`;
+  if (defaultOn(html)) return `層あり・既定ON  ${file}（開いた人に最初から出る。外部へ出すなら外す）`;
+  return `層あり          ${file}`;
+};
 
 const [cmd, ...files] = process.argv.slice(2);
 const run = { strip, restore, status }[cmd];
@@ -66,6 +78,13 @@ if (!run || !files.length) {
 }
 let bad = 0;
 for (const f of files) {
+  // 対象はHTMLだけ。rv-layer.js 自身にはコメントとして読み込み行の例が書いてあるので、
+  // 渡されると status は「層あり」と誤答し、strip はその例文を削ってしまう
+  if (!/\.x?html?$/i.test(f)) {
+    bad++;
+    console.error(`対象外    ${f}（HTMLファイルを渡す）`);
+    continue;
+  }
   try { console.log(run(f)); }
   catch (e) { bad++; console.error(`失敗      ${f}: ${e.message}`); }
 }
