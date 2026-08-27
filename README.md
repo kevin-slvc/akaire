@@ -2,7 +2,7 @@
   <img src="docs/logo.svg" alt="Akaire のワードマーク。セリフ体の Akaire で、i の点がわずかに傾いた赤い横棒に置き換わっている" width="420">
 </p>
 
-# akaire（赤入れ）
+# Akaire（赤入れ）
 
 紙の原稿に赤ペンで指摘を入れる「赤入れ」を、AIが生成したHTMLの上でそのままやるための道具。
 
