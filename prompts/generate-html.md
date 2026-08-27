@@ -57,8 +57,8 @@ rv-layer.js を置くなら "rv-layer.js"、1階層上に置くなら "../rv-lay
   `<body>` に `rvpicking` というクラスを使わない（同じ理由）
 - `<script>` タグを `</body>` より後ろに置かない。レビュー層は本文の走査範囲を
   `document.body` として初期化するため、bodyの外側の要素は対象外になる
-- 本文中で `window.__rvResolved` という変数名を別の用途に使わない
-  （済み消し込みの契約で予約されている。詳細は specs/resolved-contract.md）
+- 本文中で `window.__rvResolved` と `window.__rv` という変数名を別の用途に使わない
+  （済み消し込みの契約とレイヤーの操作入口で予約されている。詳細は specs/resolved-contract.md）
 - 外部CDN・外部フォント・外部画像への依存を増やさない（rv-layer.js自体が
   外部依存ゼロで動く設計のため、本文側もそれに揃える）
 - iframeの中にレビュー対象のコンテンツを置かない（親ページのレビュー層は

@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.24
+ * レビュー注釈レイヤー v1.25
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.24";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.25";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -369,7 +369,7 @@ var GUIDE_STEPS = [
   {k:"save",   t:"気づいたことを書いて〈保存〉。選んだところに印と番号が付く"},
   {k:"move",   t:"コメント欄が読みたい場所に重なったら、上の引用文を掴んで動かせる。書きかけは消えない"},
   {k:"block",  t:"表・カード・図はドラッグでは選べない。バーの〈枠〉を押してからクリックすると丸ごと選べる"},
-  {k:"crop",   t:"文字にも要素にも当てはまらない場所は、Optionを押しながらドラッグ。写真の切り取りのように四角く囲める"},
+  {k:"crop",   t:"文字にも要素にも当てはまらない場所は、Option（Windows / Linux では Alt）を押しながらドラッグ。写真の切り取りのように四角く囲める"},
   {k:"copy",   t:"書き終えたらバーの〈コピー〉。AIにそのまま貼ると、直したうえで対応済みの印まで入れて返してくる"}
 ];
 function guideNo(key){
@@ -1024,7 +1024,7 @@ function visibleTextOf(docLike){
   var t = body.textContent || "";
   return t.replace(/\s+/g, " ").trim();
 }
-// 再取得したHTMLが、読み手が実際に見ていた内容と同じか確かめる。
+// 再取得したHTMLが、読み手が実際に見ていた内容と同じか、文字数と先頭・末尾で確かめる。
 // サーバーが時刻や認証で中身を変える場合、SPAが表示後にDOMを組む場合、
 // 再取得版は注釈した画面と別物になる。そのままAIへ渡すと、見てもいない内容を直させる。
 function sourceMatchesView(fetchedText, domText){
@@ -1037,7 +1037,10 @@ function sourceMatchesView(fetchedText, domText){
     var b = visibleTextOf(parse.parseFromString(domText, "text/html"));
     if(!a || !b) return false;
     var diff = Math.abs(a.length - b.length) / Math.max(a.length, b.length);
-    return diff <= 0.1;   // 1割を超えて違えば別物とみなす
+    if(diff > 0.1) return false;   // 1割を超えて違えば別物とみなす
+    var edge = 300;
+    return a.slice(0, edge) === b.slice(0, edge) &&
+           a.slice(-edge) === b.slice(-edge);
   }catch(e){ return false; }
 }
 function getSourceHtml(){
@@ -1063,6 +1066,10 @@ function sourceFileName(){
 }
 // zip内の review.md。copyText() は既存契約を保つため変更せず、こちらは別に組み立てる。
 // AIが指示の末尾を読み落とすことがあるため、対応手順とidの正本宣言は冒頭に置く。
+// ページ由来の文字列は改行を空白へ畳み、Markdownのコードフェンスになる記号を逃がす。
+function reviewPageText(value){
+  return String(value == null ? "" : value).replace(/\s+/g, " ").trim().replace(/`/g, "\\`");
+}
 function reviewText(imageResult, open, sourceInfo){
   open = open || openComments();
   if(!open.length) return null;
@@ -1070,7 +1077,7 @@ function reviewText(imageResult, open, sourceInfo){
   sourceInfo = sourceInfo || {filename:sourceFileName(), method:"dom"};
   var out = "# HTMLレビュー修正指示\n\n";
   out += "- 編集対象: source/" + sourceInfo.filename + "\n";
-  out += "- 文書タイトル: " + document.title + "\n";
+  out += "- 文書タイトル: " + reviewPageText(document.title) + "\n";
   out += "- 書き出し日時: " + nowISO() + "\n";
   out += "- 未済みコメント: " + open.length + "件\n";
   out += "- 元HTMLの取得経路: " + (
@@ -1103,8 +1110,8 @@ function reviewText(imageResult, open, sourceInfo){
     var kindLabel = c.kind === "block" ? "枠" : c.kind === "crop" ? "切り取り" : "テキスト";
     out += "\n### " + (i+1) + ". " + c.id + "\n\n";
     out += "- 種別: " + kindLabel + "\n";
-    out += "- セクション: " + c.heading + "\n";
-    out += "- 対象: 「" + c.quote.replace(/\n+/g, " ") + "」\n";
+    out += "- セクション: " + reviewPageText(c.heading) + "\n";
+    out += "- 対象: 「" + reviewPageText(c.quote) + "」\n";
     out += "- 修正指示: " + c.note.replace(/\n+/g, " ") + "\n";
     if(c.replies && c.replies.length){
       out += "- 追記:\n";
@@ -2190,8 +2197,17 @@ function bindEvents(){
 
   document.getElementById("rvsave").onclick = function(){
     var note = document.getElementById("rvnote").value.trim();
+    var removedImages = [];
+    if(editing){
+      store.comments.forEach(function(c){
+        if(c.id !== editing) return;
+        (c.images || []).forEach(function(im){
+          if(im.name && !popImgs.some(function(saved){ return saved.name === im.name; })) removedImages.push(im.name);
+        });
+      });
+    }
     if(editing && editingBody && !note){ toast("本文が空です"); return; }
-    if(!note && !popImgs.length){ toast("コメントが空です"); return; }
+    if(!note && !popImgs.length && !removedImages.length){ toast("コメントが空です"); return; }
     var reopened = null;
     if(editing){
       touchComment(editing);
@@ -2215,6 +2231,7 @@ function bindEvents(){
                                  : "追記したので未済みに戻しました";
         }
       });
+      deleteImages(removedImages);
     } else if(pending){
       var id = newCommentId();
       seenIds[id] = true;

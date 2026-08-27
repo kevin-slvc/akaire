@@ -65,7 +65,6 @@ zipで受け取ったレビューコメントに対応する。手順は以下�
 ## 修正後にやらないこと
 
 - rv-layer.js の読み込み行を削除しない
-- 予約済みのID・クラス（specs/resolved-contract.md および prompts/generate-html.md の
-  「予約している」一覧）を新規要素に使わない
+- 予約済みのID・クラス（prompts/generate-html.md の「予約している」一覧）を新規要素に使わない
 - 対応していないコメントのIDを ids に含めて「済み」を偽装しない
 ```

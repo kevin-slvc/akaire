@@ -72,6 +72,8 @@ HTML側がやることは `</body>` 直前に `<script src>` を1行足すだけ
 
 これだけ。CSSもDOMもこのスクリプトが自分で作る。既存のページのマークアップやスタイルには
 触れない（後述の「予約している名前」を除く）。
+この時点では画面に何も出ない。URL末尾に `#rv` を付けて開くと表示される。
+出す/止める仕組みの詳細は次節にある。
 
 ## 使い方
 
@@ -122,9 +124,12 @@ HTML側がやることは `</body>` 直前に `<script src>` を1行足すだけ
 公開・納品の前は次のコマンドで確認できる。
 
 ```
-node tools/rv-cli.mjs status <file.html>    層あり・既定ON なら外す
-node tools/rv-cli.mjs strip  <file.html>    層ごと外す（元は .rvbak へ）
+node tools/rv-cli.mjs status <file.html>    # 層と既定ONの状態を表示するだけ（変更しない）
+node tools/rv-cli.mjs strip  <file.html>    # 層ごと外す（元は .rvbak へ）
 ```
+
+層を残して既定ONだけ外す場合は、読み込み行から `data-rv-default="on"` の1語を手で消す。
+`strip` は属性だけでなく読み込み行ごと外す、層を完全に取り外したいときの別の操作。
 
 有効化の印（`#rv` / `?rv=1`）を読んだ直後、`history.replaceState` でURLから消える。
 **同じHTMLファイルを人に送っても、相手のブラウザには出ない**（フラグは相手のブラウザに
@@ -138,9 +143,10 @@ node tools/rv-cli.mjs strip  <file.html>    層ごと外す（元は .rvbak へ�
 1. **テキスト選択**: 本文をドラッグ選択すると、その範囲にコメントを付けられる
 2. **枠（〔枠〕）**: バーの「枠」ボタン、またはOption+クリックで、表・カード・図など
    要素単位（ブロック）にコメントを付けられる。↑↓キーで対象を外側/内側へ移動できる
-3. **切り取り（〔切り取り〕）**: 枠選択モード中にドラッグすると、写真のトリミングのように
-   矩形でコメントを付けられる。テキストの一部だけでなく画面上の見た目そのものを指したい
-   ときに使う
+3. **切り取り（〔切り取り〕）**: 写真のトリミングのように矩形でコメントを付けられる。
+   テキストの一部だけでなく画面上の見た目そのものを指したいときに使う。入り方は2つあり、
+   バーの「枠」ボタンを押してからドラッグするか、Option（Windows / Linux では Alt）を
+   押しながらドラッグする。キーを覚えていなくてもボタンから辿り着ける
 
 すべてのコメントに画像を添付できる（ペースト / ドロップ、最大4枚）。
 
@@ -177,7 +183,7 @@ node tools/rv-cli.mjs strip  <file.html>    層ごと外す（元は .rvbak へ�
 AI側が対応を終えたら、改訂版HTMLの `</body>` 直前に次を埋め込む。
 
 ```html
-<script>window.__rvResolved={rev:"r20260819183055",ids:["c1755590000000"]}</script>
+<script>window.__rvResolved={rev:"r20260819183055",ids:["c17878118744286u5z1"]}</script>
 ```
 
 `rev` は対応するたびに新しい値にする（同じ`rev`は二重適用されない）。`ids` には対応した
@@ -213,15 +219,26 @@ AIに「レビュー層が載るHTMLを作らせる」ための指示文の雛�
 - [`tests/fixtures/`](tests/fixtures/): 「黙って壊れる構造」の回帰確認用HTML5本
 - [`tests/manual-checklist.md`](tests/manual-checklist.md): 実機での確認手順
 
-テストは `npm test` で走る（2種類）。
+clone直後は依存パッケージとPlaywright用のChromiumを入れてから、テストを走らせる。
+
+```
+npm install
+npx playwright install chromium
+npm test
+```
+
+テストは2種類に分けて個別にも走らせられる。
 
 ```
 npm run test:static    # ブラウザ不要。ファイル同士の食い違いを突き合わせる
 npm run test:browser   # サンプルを実ブラウザで開き、往復を1周させる（playwright が要る）
+npm run test:images    # 画像の添付と取り外しがIndexedDBの実体まで一致するか（同上）
 ```
 
+`npm run test:static` はNode.jsの組み込み機能だけを使うため、`npm install` 前でも走る。
+
 静的チェックが見るのは「実際に一度やらかした型」だけ——ガイドのステップと進行の
-呼び出しの食い違い、版数3箇所のずれ、`rev` の案内が分止まりになっていないか、
+呼び出しの食い違い、版数4箇所のずれ、`rev` の案内が分止まりになっていないか、
 予約IDが実装と生成側の雛形で揃っているか、同梱HTMLが読み込み行を持っているか。
 実走チェックは、層の表示・文字/枠/切り取りの3種・コピー文のID・`__rvResolved` に
 よる済み落ちまでを通しで確かめる。
@@ -283,11 +300,17 @@ red-1000 を使い、機械が出す警告は橙へ逃がしている。
 
 ## 動作環境・依存
 
-- 純粋なブラウザJavaScript（ES5相当）。ビルド工程・パッケージマネージャ不要
+- 構文はES5相当で、ビルド工程・パッケージマネージャ不要。ただしpolyfillは同梱せず、
+  `Promise`、`String.prototype.padStart`、`Element.closest`、`classList`、`dataset`、
+  `Element.remove` などのブラウザAPIに依存する
 - 外部CDN・外部フォント・外部画像への依存なし
 - コメント保存: `localStorage`（テキスト）、`IndexedDB`（画像原寸）
-- 画像添付・zip書き出しに対応していない古いブラウザでは、該当機能だけが劣化する
-  （コメント自体は動く）
+- `Promise` は読み込み時に評価するため、無い環境では層全体が起動しない。他の必須APIが
+  無い場合も初期化中または操作中に停止し、コメントだけが動くフォールバックにはならない
+- コメントの保存先を分ける文書識別子は `location.pathname` だけで、クエリとハッシュは
+  含めない。同じパスの `/preview?id=a` と `/preview?id=b` はコメントを共有する。クエリと
+  ハッシュには層自身の `?rv=1` / `#rv` も同居し、含めると有効化のたびに別のコメント集合へ
+  分かれるため、パスだけに固定している
 
 ## レイヤーを完全に取り外したいとき
 
@@ -304,6 +327,12 @@ node tools/rv-cli.mjs status file.html   # 今どちらか見る
 リポジトリのルート）を探して `<script src>` の相対パスを組み立てる。対象HTMLがこの
 リポジトリの外にあるときは、そこから `rv-layer.js` までの相対パスが入る（対象HTMLの隣に
 `rv-layer.js` を置いて配布する運用なら、`strip` 時の `.rvbak` から戻すのが確実）。
+
+## サードパーティ
+
+配色・タイポグラフィ・スペーシングの数値は、デジタル庁デザインシステムの
+[`@digital-go-jp/design-tokens` v2.0.1](https://www.npmjs.com/package/@digital-go-jp/design-tokens)
+を参照している。出典のライセンスはMIT。本リポジトリはデジタル庁が作成・監修したものではない。
 
 ## ライセンス
 

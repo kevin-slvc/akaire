@@ -1,6 +1,6 @@
 {
   "name": "akaire",
-  "version": "1.24.0",
+  "version": "1.25.0",
   "description": "AIが生成した自己完結HTMLに、ブラウザ上で直接コメントを入れ、AIへ渡して直させ、直った分が自動で「済み」へ落ちるレビューの往復を成立させるレイヤー",
   "license": "MIT",
   "browser": "rv-layer.js",
@@ -16,10 +16,11 @@
     "rv-cli": "tools/rv-cli.mjs"
   },
   "scripts": {
-    "test": "node tests/static-checks.mjs && node tests/roundtrip.mjs",
+    "test": "node tests/static-checks.mjs && node tests/roundtrip.mjs && node tests/images.mjs",
     "test:static": "node tests/static-checks.mjs",
     "test:browser": "node tests/roundtrip.mjs",
-    "serve": "python3 -m http.server 8000"
+    "serve": "python3 -m http.server 8000",
+    "test:images": "node tests/images.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -59,7 +59,8 @@ rv-<docslug>-<YYYYMMDD>-<HHMM>.zip
 2. **DOMシリアライズ（フォールバック）**: `location.protocol` が `file:` 等でfetchが効かない、
    またはfetchが失敗した（HTTPエラー・ネットワークエラー）場合に使う。`document.documentElement`
    を丸ごとクローンし、注釈UIの要素（`#rvbar` `#rvpop` `#rvtoast` `#rvdonepanel` `#rvorphan`
-   `#rvmarks` `#rvhover` `#rvcrop`）と本文へ差し込んだ `mark.rv`（＋その中の `.rvnum`）を
+   `#rvmarks` `#rvsel` `#rvhover` `#rvcrop` `#rvguide`）と本文へ差し込んだ `mark.rv`
+   （＋その中の `.rvnum`）を
    取り除いてから `outerHTML` を書き出す。`<script src="....rv-layer.js">` の読み込み行と、
    既存の `window.__rvResolved` の埋め込みは注釈UIではないため**取り除かず残す**（消すと次の
    レビューの往復ができなくなるため）。`body` に付いていた `rvpicking` クラスも外す
