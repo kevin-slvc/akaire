@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.21
+ * レビュー注釈レイヤー v1.22
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.21";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.22";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -362,14 +362,20 @@ function buildDOM(){
 // もらうため、各ステップは対応する操作が実際に起きたときに自動で進む（「次へ」は逃げ道）。
 // 手順を進めたかどうかの記録はページ別ではなくオリジン単位＝別のページを開き直しても
 // 同じ案内を最初から見せない。
+// 進行は名前で指す。番号で書くと、途中に1つ挿しただけで全部の呼び出し側がずれる
+// （実際 v1.21 で「動かす」を3番目へ入れたとき、枠・切り取り・コピーの3箇所が置き去りになった）
 var GUIDE_STEPS = [
-  "本文をドラッグして選ぶと、その場にコメント欄が開く。気になった一文を選んでみて",
-  "気づいたことを書いて〈保存〉。選んだところに印と番号が付く",
-  "コメント欄が読みたい場所に重なったら、上の引用文を掴んで動かせる。書きかけは消えない",
-  "表・カード・図はドラッグでは選べない。バーの〈枠〉を押してからクリックすると丸ごと選べる",
-  "文字にも要素にも当てはまらない場所は、Optionを押しながらドラッグ。写真の切り取りのように四角く囲める",
-  "書き終えたらバーの〈コピー〉。AIにそのまま貼ると、直したうえで対応済みの印まで入れて返してくる"
+  {k:"select", t:"本文をドラッグして選ぶと、その場にコメント欄が開く。気になった一文を選んでみて"},
+  {k:"save",   t:"気づいたことを書いて〈保存〉。選んだところに印と番号が付く"},
+  {k:"move",   t:"コメント欄が読みたい場所に重なったら、上の引用文を掴んで動かせる。書きかけは消えない"},
+  {k:"block",  t:"表・カード・図はドラッグでは選べない。バーの〈枠〉を押してからクリックすると丸ごと選べる"},
+  {k:"crop",   t:"文字にも要素にも当てはまらない場所は、Optionを押しながらドラッグ。写真の切り取りのように四角く囲める"},
+  {k:"copy",   t:"書き終えたらバーの〈コピー〉。AIにそのまま貼ると、直したうえで対応済みの印まで入れて返してくる"}
 ];
+function guideNo(key){
+  for(var i = 0; i < GUIDE_STEPS.length; i++) if(GUIDE_STEPS[i].k === key) return i + 1;
+  return 0;
+}
 function guideSeen(){
   try{ return localStorage.getItem(GUIDE_KEY) === "done"; }catch(e){ return true; }
 }
@@ -385,13 +391,14 @@ function guideRender(){
   if(!g) return;
   if(!guideStep){ g.style.display = "none"; return; }
   document.getElementById("rvguidestep").textContent = "使い方 " + guideStep + " / " + GUIDE_STEPS.length;
-  document.getElementById("rvguidetxt").textContent = GUIDE_STEPS[guideStep - 1];
+  document.getElementById("rvguidetxt").textContent = GUIDE_STEPS[guideStep - 1].t;
   document.getElementById("rvguidenext").textContent = guideStep === GUIDE_STEPS.length ? "終わり" : "次へ";
   g.style.display = "block";
 }
 // 引数のstepと今のstepが一致したときだけ進む。操作の順番が前後しても飛ばさない。
-function guideAdvance(step){
-  if(guideStep !== step) return;
+function guideAdvance(key){
+  var step = (typeof key === "number") ? key : guideNo(key);
+  if(!step || guideStep !== step) return;
   if(guideStep >= GUIDE_STEPS.length){ guideFinish("使い方はここまで。次からは出ない。この層を止めるならURL末尾に #rv-off、もう一度見るなら #rv"); return; }
   guideStep++; guideRender();
 }
@@ -925,6 +932,25 @@ function renderDonePanel(){
 }
 
 // コピー文字列を組み立てるだけの関数（clipboard操作はしない。テスト用にwindow.__rvへ露出）
+// クリップボードへ書く。APIが拒否された環境では隠しtextareaのexecCommandへ落ちる。
+// execCommandは戻り値を見ないと、禁止されている環境でも成功したことになる
+function writeClipboard(text){
+  return new Promise(function(resolve, reject){
+    var fallback = function(){
+      var t = document.createElement("textarea");
+      t.value = text; t.style.position = "fixed"; t.style.left = "-9999px";
+      document.body.appendChild(t); t.select();
+      var ok = false;
+      try{ ok = document.execCommand("copy"); }catch(e){ ok = false; }
+      t.remove();
+      ok ? resolve("fallback") : reject();
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(text).then(function(){ resolve("api"); }, fallback);
+    else fallback();
+  });
+}
+
 function copyText(){
   var open = openComments();
   if(!open.length) return null;
@@ -1996,8 +2022,12 @@ function openPop(x, y, quote, note, images){
   var h = pop.offsetHeight, top = y + 10;
   if(top + h > window.innerHeight - 8) top = Math.max(8, y - h - 10);
   pop.style.top = (top + window.scrollY) + "px";
-  // ここでフォーカスを移すと選択が解けてCmd+Cが効かなくなる（実測 Chromium 145）。
-  // 文字キーを押した時点で初めてコメント欄へ入る（bindEventsのkeydown）
+  // 開いた時点でコメント欄へ入れる。日本語入力の1文字目が壊れるため（v1.22）。
+  // 変換は押した瞬間に始まるので、1打目のkeydownでフォーカスを移すと変換が切れ、
+  // ローマ字が生のまま落ちる（「て」を打つと「t」＋変換中の「え」になる。実機で確認）。
+  // v1.1〜v1.21 はここでフォーカスを移さず、Cmd+Cで選んだ文字列をコピーできることを
+  // 優先していた。その結果はkeydown側で引用（＝選んだ文字列そのもの）を書くことで保つ
+  ta.focus({preventScroll:true});
 }
 // ---------- ポップアップを動かす ----------
 // 指摘したい箇所そのものにポップアップが重なると、周りの文脈が読めないまま書くことになる
@@ -2034,6 +2064,7 @@ function bindPopDrag(){
   document.addEventListener("mouseup", function(){
     if(!popDrag) return;
     pop.classList.remove("rvmoving");
+    guideAdvance("move");
     // 同じmouseupを見る他のハンドラ（選択の確定）が「移動中だった」と判定できるよう、
     // 実際に畳むのは1周あとにする。登録順に依存しないための遅延
     setTimeout(function(){ popDrag = null; }, 0);
@@ -2122,7 +2153,7 @@ function bindEvents(){
     pending = {quote:range.toString(), before:before, after:after, pos:raw,
       heading:headingOf(range.startContainer)};
     editing = null;
-    guideAdvance(1);
+    guideAdvance("select");
     var rect = range.getBoundingClientRect();
     drawPendingSel(range);
     openPop(rect.left + rect.width/2, rect.bottom, pending.quote, "", []);
@@ -2206,9 +2237,9 @@ function bindEvents(){
     }
     var savedKind = pending && pending.kind;
     save(); closePop(); render(); window.getSelection().removeAllRanges();
-    guideAdvance(2);
-    if(savedKind === "block") guideAdvance(3);
-    if(savedKind === "crop") guideAdvance(4);
+    guideAdvance("save");
+    if(savedKind === "block") guideAdvance("block");
+    if(savedKind === "crop") guideAdvance("crop");
     if(reopened) toast(reopened);
   };
   document.getElementById("rvdel").onclick = function(){
@@ -2230,20 +2261,11 @@ function bindEvents(){
   document.getElementById("rvcopy").onclick = function(){
     var out = copyText();
     if(!out){ toast("未済みコメントはありません"); return; }
-    guideAdvance(5);
-    navigator.clipboard.writeText(out).then(function(){
-      toast("コピーしました。チャットに貼ってください");
+    guideAdvance("copy");
+    writeClipboard(out).then(function(how){
+      toast(how === "api" ? "コピーしました。チャットに貼ってください"
+                          : "コピーしました（フォールバック）");
     }, function(){
-      // execCommand の戻り値を見ないと、禁止されている環境でも「コピーしました」と出る。
-      // 読み手は古いクリップボードを貼り、コメントが渡ったと思い込む。
-      var t = document.createElement("textarea");
-      t.value = out;
-      t.style.position = "fixed"; t.style.left = "-9999px";
-      document.body.appendChild(t); t.select();
-      var ok = false;
-      try{ ok = document.execCommand("copy"); }catch(e){ ok = false; }
-      t.remove();
-      if(ok){ toast("コピーしました（フォールバック）"); return; }
       // どちらの経路も駄目なときは、内容を失わせずにファイルで渡す
       try{
         downloadBlob(new Blob([out], {type:"text/plain;charset=utf-8"}),
@@ -2338,6 +2360,22 @@ function bindEvents(){
       if(!tryClose()) return;
       var dp = document.getElementById("rvdonepanel");
       if(dp) dp.style.display = "none";
+    }
+    // コメント欄にフォーカスを入れたので、本文の選択はもう残らない。
+    // Cmd+Cで「選んだ文字列がコピーできる」結果は変えたくないので、コメント欄で
+    // 何も選んでいないときだけ引用（＝選んだ文字列そのもの）を書き込む。
+    // コメント欄の中で選択している場合は、そちらのコピーを邪魔しない
+    if((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C") &&
+       pop.style.display === "block"){
+      var na = document.getElementById("rvnote");
+      if(document.activeElement === na && na.selectionStart === na.selectionEnd){
+        var qt = (document.getElementById("rvquote").textContent || "");
+        if(qt){
+          e.preventDefault();
+          writeClipboard(qt).then(function(){ toast("選んだ文字列をコピーしました"); },
+                                  function(){ toast("コピーできませんでした"); });
+        }
+      }
     }
     if((e.metaKey || e.ctrlKey) && e.key === "Enter" && pop.style.display === "block")
       document.getElementById("rvsave").click();
