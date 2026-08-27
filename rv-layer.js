@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.17
+ * レビュー注釈レイヤー v1.19
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -43,6 +43,15 @@
 if(window.__rvLayerLoaded) return;
 window.__rvLayerLoaded = true;
 
+// このHTMLを作った人が「開いた人には最初から出す」と決めているか。
+//   <script src="rv-layer.js" data-rv-default="on"></script>
+// の1語で指定する。レビューしてほしくて渡すHTMLに付ける想定で、付けなければ従来どおり
+// 黙って始まる。見る側の明示指定（#rv / #rv-off）は常にこの指定より強い。
+var SELF = document.currentScript ||
+  document.querySelector("script[data-rv-default]") || null;
+var DEFAULT_ON = !!(SELF &&
+  /^(on|1|true)$/i.test(SELF.getAttribute("data-rv-default") || ""));
+
 var LEGACY_DOC = (location.pathname.split("/").pop() || "untitled");
 var DOC = location.pathname || "/";
 var KEY = "rv:" + DOC;
@@ -54,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.17";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.19";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -97,18 +106,18 @@ var CSS = ""
 +"#rvguide,#rvguide *,"
 +"#rvtoast,#rvmarks,#rvmarks *,#rvsel,#rvsel *,#rvhover,#rvhover *,#rvcrop,#rvcrop *"
 +"{box-sizing:border-box}"
-+"mark.rv{background:var(--rv-mark,#fdeeee);border-bottom:2px solid var(--rv-accent,var(--accent,#a90000));"
++"mark.rv{background:var(--rv-mark,#fdeeee);border-bottom:2px solid var(--rv-accent,#a90000);"
 +"padding:1px 0;cursor:pointer;border-radius:2px}"
 +"mark.rv:hover{background:var(--rv-mark-hover,#ffdada)}"
-+"mark.rv .rvnum{font-size:10px;vertical-align:super;color:var(--rv-accent-hover,var(--coral-active,#ce0000));"
++"mark.rv .rvnum{font-size:10px;vertical-align:super;color:var(--rv-accent-hover,#ce0000);"
 +"font-weight:700;margin-left:2px;font-family:ui-monospace,Menlo,monospace}"
 +"#rvbar{position:fixed;right:20px;bottom:20px;z-index:2147483630;display:flex;gap:8px;"
 +"align-items:center;background:var(--rv-inverse,var(--surface-dark,#000000));color:var(--rv-on-inverse,#ffffff);"
 +"border-radius:999px;padding:9px 10px 9px 18px;font-size:13px;"
 +"box-shadow:0 4px 18px rgba(0,0,0,.22)}"
 +"#rvbar button{font:inherit;font-size:12px;border:0;border-radius:999px;"
-+"padding:6px 13px;cursor:pointer;background:var(--rv-accent,var(--coral,#a90000));color:#fff}"
-+"#rvbar button:hover{background:var(--rv-accent-hover,var(--coral-active,#ce0000))}"
++"padding:6px 13px;cursor:pointer;background:var(--rv-accent,#a90000);color:#fff}"
++"#rvbar button:hover{background:var(--rv-accent-hover,#ce0000)}"
 +"#rvbar button.ghost{background:transparent;color:var(--rv-on-inverse-muted,#b3b3b3);padding:6px 9px}"
 +"#rvbar button.ghost:hover{color:var(--rv-on-inverse,#ffffff)}"
 +"#rvcount{margin-right:4px;letter-spacing:.02em}"
@@ -116,13 +125,13 @@ var CSS = ""
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:10px;padding:12px;"
 +"box-shadow:0 8px 26px rgba(0,0,0,.18);display:none}"
 +"#rvpop .q{font-size:12px;color:var(--rv-text-muted,var(--muted,#767676));margin:0 0 8px;line-height:1.55;"
-+"max-height:52px;overflow:hidden;border-left:2px solid var(--rv-accent,var(--coral,#a90000));padding-left:8px}"
++"max-height:52px;overflow:hidden;border-left:2px solid var(--rv-accent,#a90000);padding-left:8px}"
 +"#rvpop textarea{width:100%;min-height:70px;font:inherit;font-size:13px;"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:6px;padding:8px;resize:vertical;"
 +"background:#fff;color:var(--rv-text,var(--ink,#1a1a1a))}"
 +"#rvpop .row{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}"
 +"#rvpop button{font:inherit;font-size:12px;border:0;border-radius:6px;"
-+"padding:6px 12px;cursor:pointer;background:var(--rv-accent,var(--coral,#a90000));color:#fff}"
++"padding:6px 12px;cursor:pointer;background:var(--rv-accent,#a90000);color:#fff}"
 +"#rvpop button.ghost{background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdonepanel{position:fixed;right:20px;bottom:70px;z-index:2147483640;width:320px;"
 +"max-height:300px;overflow:auto;background:var(--rv-surface,var(--canvas,#ffffff));"
@@ -133,7 +142,7 @@ var CSS = ""
 +"#rvdonepanel .rvdonerow:last-child{border-bottom:0}"
 +"#rvdonepanel .rvdonetxt{flex:1;color:var(--rv-text,var(--body,#1a1a1a));line-height:1.5}"
 +"#rvdonepanel .rvdoneopen{cursor:pointer}"
-+"#rvdonepanel .rvdoneopen:hover{color:var(--rv-accent-hover,var(--coral-active,#ce0000));text-decoration:underline}"
++"#rvdonepanel .rvdoneopen:hover{color:var(--rv-accent-hover,#ce0000);text-decoration:underline}"
 +"#rvdonepanel .rvdonerow button{font:inherit;font-size:11px;border:0;border-radius:6px;"
 +"padding:4px 9px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdonepanel .rvdoneempty{color:var(--rv-text-muted,var(--muted,#767676));padding:6px 4px}"
@@ -160,26 +169,26 @@ var CSS = ""
 +"#rvthread button{flex:0 0 auto;font:inherit;font-size:10px;border:0;border-radius:5px;"
 +"padding:2px 6px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text-muted,var(--muted,#767676))}"
 +"#rvthread button:hover{color:var(--rv-text,var(--body,#1a1a1a))}"
-+"#rvpop.rvdrag{outline:2px dashed var(--rv-accent,var(--coral,#a90000));outline-offset:3px}"
++"#rvpop.rvdrag{outline:2px dashed var(--rv-accent,#a90000);outline-offset:3px}"
 +"#rvmarks{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483600}"
 +"#rvsel{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483615;pointer-events:none}"
 +"#rvsel .rvselbox{position:absolute;background:var(--rv-select-fill,rgba(169,0,0,.15));"
-+"border:1px dashed var(--rv-accent,var(--coral,#a90000));border-radius:3px;pointer-events:none}"
-+"#rvmarks .rvbox{position:absolute;border:2px solid var(--rv-accent,var(--coral,#a90000));border-radius:6px;"
++"border:1px dashed var(--rv-accent,#a90000);border-radius:3px;pointer-events:none}"
++"#rvmarks .rvbox{position:absolute;border:2px solid var(--rv-accent,#a90000);border-radius:6px;"
 +"background:var(--rv-box-fill,rgba(169,0,0,.06));pointer-events:none}"
 +"#rvmarks .rvbadge{position:absolute;top:-11px;left:-11px;pointer-events:auto;width:22px;height:22px;"
-+"border:0;border-radius:999px;cursor:pointer;background:var(--rv-accent,var(--coral,#a90000));color:#fff;"
++"border:0;border-radius:999px;cursor:pointer;background:var(--rv-accent,#a90000);color:#fff;"
 +"font:inherit;font-size:11px;font-weight:700;line-height:22px;padding:0;"
 +"font-family:ui-monospace,Menlo,monospace}"
 +"#rvhover{position:absolute;z-index:2147483610;pointer-events:none;display:none;"
-+"border:2px dashed var(--rv-accent,var(--coral,#a90000));border-radius:6px;background:var(--rv-hover-fill,rgba(169,0,0,.08))}"
++"border:2px dashed var(--rv-accent,#a90000);border-radius:6px;background:var(--rv-hover-fill,rgba(169,0,0,.08))}"
 +"#rvhover span{position:absolute;top:-21px;left:0;background:var(--rv-inverse,var(--surface-dark,#000000));"
 +"color:var(--rv-on-inverse,#ffffff);font-size:10px;padding:2px 8px;border-radius:999px;white-space:nowrap;"
 +"font-family:ui-monospace,Menlo,monospace}"
 +"body.rvpicking,body.rvpicking *{cursor:crosshair !important}"
 +"body.rvpicking{-webkit-user-select:none;user-select:none}"
 +"#rvcrop{position:absolute;z-index:2147483620;display:none;pointer-events:none;border-radius:3px;"
-+"border:2px solid var(--rv-accent,var(--coral,#a90000));box-shadow:0 0 0 9999px rgba(0,0,0,.38)}"
++"border:2px solid var(--rv-accent,#a90000);box-shadow:0 0 0 9999px rgba(0,0,0,.38)}"
 +"#rvcrop span{position:absolute;bottom:-22px;right:0;background:var(--rv-inverse,var(--surface-dark,#000000));"
 +"color:var(--rv-on-inverse,#ffffff);font-size:10px;padding:2px 8px;border-radius:999px;white-space:nowrap;"
 +"font-family:ui-monospace,Menlo,monospace}"
@@ -187,7 +196,7 @@ var CSS = ""
 +"#rvguide{position:fixed;left:20px;bottom:20px;z-index:2147483641;"
 +"width:300px;max-width:calc(100vw - 40px);"
 +"background:var(--rv-surface,var(--canvas,#ffffff));color:var(--rv-text,var(--ink,#1a1a1a));"
-+"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-left:3px solid var(--rv-accent,var(--coral,#a90000));"
++"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-left:3px solid var(--rv-accent,#a90000);"
 +"border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.65;"
 +"box-shadow:0 8px 26px rgba(0,0,0,.18);display:none}"
 +"#rvguidestep{font-size:11px;letter-spacing:.06em;color:var(--rv-text-muted,var(--muted,#767676));"
@@ -195,7 +204,7 @@ var CSS = ""
 +"#rvguidetxt{margin:0 0 10px}"
 +"#rvguide .row{display:flex;gap:6px;justify-content:flex-end;align-items:center}"
 +"#rvguide button{font:inherit;font-size:12px;border:0;border-radius:6px;padding:5px 12px;"
-+"cursor:pointer;background:var(--rv-accent,var(--coral,#a90000));color:#fff}"
++"cursor:pointer;background:var(--rv-accent,#a90000);color:#fff}"
 +"#rvguide button.ghost{background:transparent;color:var(--rv-text-muted,var(--muted,#767676));padding:5px 6px}"
 +"#rvguide button.ghost:hover{color:var(--rv-text,var(--ink,#1a1a1a))}"
 +"@media print{#rvbar,#rvpop,#rvtoast,#rvdonepanel,#rvmarks,#rvsel,#rvhover,#rvcrop,#rvguide"
@@ -1211,6 +1220,8 @@ function exportReview(){
 
 window.__rv = {
   version: RV_VERSION,
+  // このページが data-rv-default="on" を持っているか（出ない理由を切り分けるとき用）
+  defaultOn: DEFAULT_ON,
   // 使い方ガイドをもう一度出す（デモや録画の撮り直し用）。
   guide: function(){ try{ localStorage.removeItem(GUIDE_KEY); }catch(e){} guideStart(); },
   get store(){ return store; },
@@ -2296,18 +2307,26 @@ function bindEvents(){
 
 // このブラウザで層を出すか。相手に送ったHTMLで層が出ないのは、ファイルではなく
 // 見る側のブラウザにフラグが無いから（外す作業を要らなくするための設計）
-var memFlag = false;      // localStorageが使えない環境での、その読み込み限りの有効化
+// 見る側の判断は三値で持つ。"1"=出す / "0"=出さない / 記録なし=まだ決めていない。
+// 「まだ決めていない」ときだけ DEFAULT_ON（作った人の指定）が効く。
+// 以前は「出さない」を鍵の削除で表していたが、既定ONのページでは削除＝既定へ戻る
+// ＝ #rv-off が効かなくなるため、明示的に "0" を書くようにした
+var memFlag = null;      // localStorageが使えない環境での、その読み込み限りの判断
 function storageOK(){
   try{ localStorage.setItem(ENABLE_KEY + ":t", "1"); localStorage.removeItem(ENABLE_KEY + ":t"); return true; }
   catch(e){ return false; }
 }
 function enabled(){
-  if(memFlag) return true;
-  try{ return localStorage.getItem(ENABLE_KEY) === "1"; }catch(e){ return false; }
+  if(memFlag !== null) return memFlag;
+  var v = null;
+  try{ v = localStorage.getItem(ENABLE_KEY); }catch(e){ v = null; }
+  if(v === "1") return true;
+  if(v === "0") return false;
+  return DEFAULT_ON;
 }
 function setEnabled(on){
   memFlag = on;
-  try{ on ? localStorage.setItem(ENABLE_KEY, "1") : localStorage.removeItem(ENABLE_KEY); }catch(e){}
+  try{ localStorage.setItem(ENABLE_KEY, on ? "1" : "0"); }catch(e){}
 }
 // #rv が付いたURLをそのまま人へ渡すと相手側でも有効になってしまうので、読んだら消す
 function dropMark(){
@@ -2370,6 +2389,7 @@ function init(){
   window.addEventListener("hashchange", function(){ if(applyHash()) location.reload(); });
   if(!enabled()){
     console.info("[rv] v" + RV_VERSION + " / レビュー層はこのブラウザではOFF。URL末尾に #rv を付けて開くと出る（止めるのは #rv-off）" +
+      (DEFAULT_ON ? " ／ このページは既定ONの指定を持つが、このブラウザで #rv-off が選ばれている" : "") +
       (storageOK() ? "" : " ／ この場所ではlocalStorageが使えないので、開くたびに #rv が要る"));
     return;
   }
