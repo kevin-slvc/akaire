@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.19
+ * レビュー注釈レイヤー v1.20
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.19";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.20";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -125,7 +125,10 @@ var CSS = ""
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:10px;padding:12px;"
 +"box-shadow:0 8px 26px rgba(0,0,0,.18);display:none}"
 +"#rvpop .q{font-size:12px;color:var(--rv-text-muted,var(--muted,#767676));margin:0 0 8px;line-height:1.55;"
-+"max-height:52px;overflow:hidden;border-left:2px solid var(--rv-accent,#a90000);padding-left:8px}"
++"max-height:52px;overflow:hidden;border-left:2px solid var(--rv-accent,#a90000);padding-left:8px;"
++"cursor:move;user-select:none}"
++"#rvpop.rvmoving{user-select:none}"
++"#rvpop.rvmoving *{user-select:none;cursor:move}"
 +"#rvpop textarea{width:100%;min-height:70px;font:inherit;font-size:13px;"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:6px;padding:8px;resize:vertical;"
 +"background:#fff;color:var(--rv-text,var(--ink,#1a1a1a))}"
@@ -1995,6 +1998,47 @@ function openPop(x, y, quote, note, images){
   // ここでフォーカスを移すと選択が解けてCmd+Cが効かなくなる（実測 Chromium 145）。
   // 文字キーを押した時点で初めてコメント欄へ入る（bindEventsのkeydown）
 }
+// ---------- ポップアップを動かす ----------
+// 指摘したい箇所そのものにポップアップが重なると、周りの文脈が読めないまま書くことになる
+// （引用文はポップアップ内に出るが、その前後を見ながら直したい）。引用文の帯を掴んで
+// 動かせるようにする。掴めるのは引用文だけ＝入力欄の選択やボタンの操作を邪魔しない。
+// 動かした位置は開いている間だけ有効で、閉じれば既定の配置へ戻る。次のコメントは別の場所に
+// 出るので、前回動かした位置を覚えていると対象から離れた場所に出てしまう
+var popDrag = null;
+function clampPop(left, top){
+  var w = pop.offsetWidth, h = pop.offsetHeight;
+  // ポップアップが画面より高いときは下端の制限が上端を追い越すので、下限を8pxで止める
+  var maxL = Math.max(8, window.innerWidth - w - 8);
+  var maxT = Math.max(8, window.innerHeight - h - 8);
+  return {left: Math.min(Math.max(8, left), maxL), top: Math.min(Math.max(8, top), maxT)};
+}
+function bindPopDrag(){
+  var q = document.getElementById("rvquote");
+  if(!q) return;
+  q.title = "ドラッグでこの枠を動かせる（閉じると元の位置に戻る）";
+  q.addEventListener("mousedown", function(ev){
+    if(ev.button !== 0) return;
+    var r = pop.getBoundingClientRect();
+    popDrag = {dx: ev.clientX - r.left, dy: ev.clientY - r.top};
+    pop.classList.add("rvmoving");
+    ev.preventDefault();     // 掴んだまま本文やUIの選択が走らないように
+  });
+  document.addEventListener("mousemove", function(ev){
+    if(!popDrag) return;
+    var pos = clampPop(ev.clientX - popDrag.dx, ev.clientY - popDrag.dy);
+    pop.style.left = pos.left + "px";
+    pop.style.top = (pos.top + window.scrollY) + "px";
+    ev.preventDefault();
+  });
+  document.addEventListener("mouseup", function(){
+    if(!popDrag) return;
+    pop.classList.remove("rvmoving");
+    // 同じmouseupを見る他のハンドラ（選択の確定）が「移動中だった」と判定できるよう、
+    // 実際に畳むのは1周あとにする。登録順に依存しないための遅延
+    setTimeout(function(){ popDrag = null; }, 0);
+  });
+}
+
 // 書きかけがあるか。Escapeとページ遷移で黙って消さないための判定。
 function hasUnsavedDraft(){
   if(!pop || pop.style.display !== "block") return false;
@@ -2005,6 +2049,7 @@ function hasUnsavedDraft(){
 var escArmed = false;   // 1回目のEscで警告、2回目で破棄
 function closePop(){
   escArmed = false;
+  popDrag = null; if(pop) pop.classList.remove("rvmoving");
   clearPendingSel();
   popGen++; popImgsPending = 0;
   pop.style.display = "none"; editing = null; pending = null; popImgs = []; editingBody = false;
@@ -2024,6 +2069,9 @@ function tryClose(){
 
 function bindEvents(){
   document.addEventListener("mouseup", function(ev){
+    // 枠を動かしている最中の離しは、本文の選択でも枠外クリックでもない。
+    // ここへ渡すと選択の確定が走り、動かした位置が既定へ描き直される
+    if(popDrag) return;
     if(pop.contains(ev.target)) return;
     if(isRvChrome(ev.target)) return;
     if(picking){
@@ -2413,6 +2461,7 @@ function init(){
   load();
   applyResolved();
   bindEvents();
+  bindPopDrag();
   // scrollは要素上ではbubbleしないためcaptureで拾う。内側スクロールも同じ1本で追従する。
   document.addEventListener("scroll", scheduleLayout, true);
   window.addEventListener("scroll", scheduleLayout, {passive:true});
