@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.20
+ * レビュー注釈レイヤー v1.21
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -21,7 +21,7 @@
  *   - 指摘への画像添付（ペースト / ドロップ）と、指摘への追記
  *   - 未対応の指摘だけをまとめてコピー（AIへそのまま貼れる形）
  *   - 元HTML・review.md・画像を含むzipの保存（「zip」ボタン。別PCや別の人へ渡すときの補助）
- *   - 初めて開いた人にだけ出る4ステップの使い方ガイド（スキップ可・window.__rv.guide()で再表示）
+ *   - 初めて開いた人にだけ出る6ステップの使い方ガイド（スキップ可・window.__rv.guide()で再表示）
  *
  * 対応済みの反映:
  *   1. 「コピー」で未対応の指摘をAIへ貼る
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.20";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.21";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -365,6 +365,7 @@ function buildDOM(){
 var GUIDE_STEPS = [
   "本文をドラッグして選ぶと、その場にコメント欄が開く。気になった一文を選んでみて",
   "気づいたことを書いて〈保存〉。選んだところに印と番号が付く",
+  "コメント欄が読みたい場所に重なったら、上の引用文を掴んで動かせる。書きかけは消えない",
   "表・カード・図はドラッグでは選べない。バーの〈枠〉を押してからクリックすると丸ごと選べる",
   "文字にも要素にも当てはまらない場所は、Optionを押しながらドラッグ。写真の切り取りのように四角く囲める",
   "書き終えたらバーの〈コピー〉。AIにそのまま貼ると、直したうえで対応済みの印まで入れて返してくる"
@@ -391,7 +392,7 @@ function guideRender(){
 // 引数のstepと今のstepが一致したときだけ進む。操作の順番が前後しても飛ばさない。
 function guideAdvance(step){
   if(guideStep !== step) return;
-  if(guideStep >= GUIDE_STEPS.length){ guideFinish("使い方はここまで。次からは出ない"); return; }
+  if(guideStep >= GUIDE_STEPS.length){ guideFinish("使い方はここまで。次からは出ない。この層を止めるならURL末尾に #rv-off、もう一度見るなら #rv"); return; }
   guideStep++; guideRender();
 }
 function guideStart(){
