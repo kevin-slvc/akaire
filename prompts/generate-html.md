@@ -49,8 +49,9 @@ rv-layer.js を置くなら "rv-layer.js"、1階層上に置くなら "../rv-lay
   レビュー層は起動を中止し、画面にバナーで警告を出す）:
 
   rvorphan, rvbar, rvcount, rvdone, rvcopy, rvexport, rvpick, rvclear,
-  rvpop, rvquote, rvimgs, rvnote, rvdel, rvcancel, rvsave,
-  rvdonepanel, rvdonelist, rvmarks, rvcrop, rvhover, rvtoast
+  rvpop, rvquote, rvimgs, rvnote, rvdel, rvcancel, rvsave, rvdir, rvthread,
+  rvdonepanel, rvdonelist, rvmarks, rvsel, rvcrop, rvhover, rvtoast,
+  rvguide, rvguidetxt, rvguidestep, rvguidenext, rvguideskip
 
 - 本文の要素に `mark.rv` というタグ+クラスの組み合わせ、`.rvnum` というクラス、
   `<body>` に `rvpicking` というクラスを使わない（同じ理由）

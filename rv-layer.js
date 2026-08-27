@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.23
+ * レビュー注釈レイヤー v1.24
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.23";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.24";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
