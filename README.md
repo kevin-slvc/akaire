@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Akaire のワードマーク。セリフ体の Akaire で、i の点がわずかに傾いた赤い横棒に置き換わっている" width="420">
+  <img src="docs/logo.svg" alt="Akaire のワードマーク。セリフ体の Akaire で、i の点がわずかに傾いた赤い横棒に置き換わっている" width="420">
 </p>
 
 # akaire（赤入れ）
