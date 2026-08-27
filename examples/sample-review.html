@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>サンプル: 会議室予約の運用見直し（レビュー練習用）</title>
+<style>
+:root{
+  --color-primary:#264af4;
+  --color-bg:#ffffff;
+  --color-bg-subtle:#f2f2f2;
+  --color-border:#cccccc;
+  --color-text:#1a1a1a;
+  --color-text-muted:#767676;
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN",
+    "Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;padding:0;background:var(--color-bg-subtle);
+  color:var(--color-text);font-family:var(--font-sans);
+  font-size:16px;line-height:1.8;
+}
+.wrap{max-width:760px;margin:0 auto;padding:48px 24px 96px;background:var(--color-bg)}
+h1{font-size:28px;line-height:1.4;margin:0 0 8px;font-weight:700}
+.lead{color:var(--color-text-muted);font-size:14px;margin:0 0 40px}
+h2{font-size:21px;line-height:1.5;margin:48px 0 16px;padding-bottom:8px;
+   border-bottom:2px solid var(--color-primary);font-weight:700}
+h3{font-size:17px;margin:32px 0 8px;font-weight:700}
+p{margin:0 0 16px}
+table{width:100%;border-collapse:collapse;margin:16px 0 8px;font-size:15px}
+th,td{border:1px solid var(--color-border);padding:10px 12px;text-align:left}
+th{background:var(--color-bg-subtle);font-weight:700}
+td.num{text-align:right;font-family:var(--font-mono)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:16px 0}
+.card{border:1px solid var(--color-border);border-radius:8px;padding:16px;background:var(--color-bg)}
+.card h4{margin:0 0 8px;font-size:15px}
+.card p{margin:0;font-size:14px;color:var(--color-text-muted)}
+figure{margin:24px 0;padding:16px;border:1px solid var(--color-border);border-radius:8px}
+figcaption{font-size:13px;color:var(--color-text-muted);margin-top:8px}
+.note{background:var(--color-bg-subtle);border-left:4px solid var(--color-primary);
+      padding:12px 16px;margin:24px 0;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>会議室予約の運用見直し</h1>
+<p class="lead">社内検討メモ / 全社共通業務チーム / 2026-08-27</p>
+
+<div class="note">
+  <strong>これはレビューの練習用サンプルです。</strong>
+  架空の内容で、実在の組織・製品とは関係ありません。
+  このページには<strong>わざと3つの欠陥</strong>が入れてあります。探して赤入れしてください。
+</div>
+
+<h2>背景</h2>
+
+<p>
+  現行の予約運用は共有カレンダーへの手入力で回している。二重予約が起きたときに気づくのが
+  当日の朝になり、そのたびに調整の連絡が発生している。直近3ヶ月の記録では、調整の連絡に
+  かかった時間は<strong>月あたり約12時間</strong>だった。
+</p>
+
+<p>
+  この時間は本来の業務ではない。仕組みを変えれば減らせる性質のものなので、置き換えの
+  候補を2つ絞って比較した。
+</p>
+
+<h2>現状の内訳</h2>
+
+<table>
+  <thead>
+    <tr><th>作業</th><th>発生頻度</th><th>1回あたり</th><th>月あたり</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>二重予約の調整連絡</td><td>月18回</td><td class="num">25分</td><td class="num">7.5時間</td></tr>
+    <tr><td>予約の代理入力</td><td>月30回</td><td class="num">8分</td><td class="num">4時間</td></tr>
+    <tr><td>当日の空室確認</td><td>月60回</td><td class="num">0.05時間</td><td class="num">3時間</td></tr>
+    <tr><td><strong>合計</strong></td><td>—</td><td class="num">—</td><td class="num"><strong>14.5時間</strong></td></tr>
+  </tbody>
+</table>
+
+<p>
+  内訳のうち最も重いのは二重予約の調整で、全体のおよそ半分を占める。ここが減れば
+  残りは運用の工夫で吸収できる範囲に収まる。
+</p>
+
+<h2>調整連絡にかかった時間の推移</h2>
+
+<figure>
+  <svg viewBox="0 0 520 220" width="100%" role="img"
+       aria-label="6月から8月の調整連絡時間の棒グラフ。6月7.9時間、7月7.6時間、8月7.5時間">
+    <line x1="56" y1="20" x2="56" y2="170" stroke="#767676" stroke-width="1"/>
+    <line x1="56" y1="170" x2="500" y2="170" stroke="#767676" stroke-width="1"/>
+    <text x="48" y="174" font-size="11" fill="#767676" text-anchor="end">7.4</text>
+    <text x="48" y="124" font-size="11" fill="#767676" text-anchor="end">7.6</text>
+    <text x="48" y="74" font-size="11" fill="#767676" text-anchor="end">7.8</text>
+    <text x="48" y="24" font-size="11" fill="#767676" text-anchor="end">8.0</text>
+    <rect x="96"  y="45"  width="88" height="125" fill="#264af4"/>
+    <rect x="236" y="120" width="88" height="50"  fill="#264af4"/>
+    <rect x="376" y="145" width="88" height="25"  fill="#264af4"/>
+    <text x="140" y="190" font-size="13" fill="#1a1a1a" text-anchor="middle">6月</text>
+    <text x="280" y="190" font-size="13" fill="#1a1a1a" text-anchor="middle">7月</text>
+    <text x="420" y="190" font-size="13" fill="#1a1a1a" text-anchor="middle">8月</text>
+    <text x="140" y="38"  font-size="12" fill="#1a1a1a" text-anchor="middle">7.9</text>
+    <text x="280" y="113" font-size="12" fill="#1a1a1a" text-anchor="middle">7.6</text>
+    <text x="420" y="138" font-size="12" fill="#1a1a1a" text-anchor="middle">7.5</text>
+  </svg>
+  <figcaption>調整連絡にかかった時間（単位: 時間/月）</figcaption>
+</figure>
+
+<p>
+  3ヶ月で減ってはいるが、下げ止まっている。運用の注意喚起では、ここから先は動かない。
+</p>
+
+<h2>候補の比較</h2>
+
+<div class="cards">
+  <div class="card">
+    <h4>候補X（予約専用サービス）</h4>
+    <p>空室が一覧で見える。重複予約はシステム側で弾く。初期設定に2週間。</p>
+  </div>
+  <div class="card">
+    <h4>候補Y（既存カレンダーの拡張）</h4>
+    <p>いま使っているカレンダーに機能を足す。重複は警告のみで、弾きはしない。</p>
+  </div>
+</div>
+
+<p>
+  候補Xは二重予約そのものを起こさせない。候補Yは起きたことを早く知らせる。前者は
+  調整連絡を消し、後者は気づくのを当日朝から前日夕方へ早める。
+</p>
+
+<h2>提案</h2>
+
+<p>
+  候補Xを採用したい。二重予約を弾ける点が、いま最も時間を取られている作業に直接効くため。
+  初期設定の2週間は、9月の第1週から第2週に充てれば通常業務と重ならない。
+</p>
+
+<h3>決めてほしいこと</h3>
+
+<p>
+  候補Xの採用可否を9月4日までに。可なら、初期設定の担当を全社共通業務チームから1名
+  出す形で進める。
+</p>
+
+</div>
+
+<script src="../rv-layer.js" data-rv-default="on"></script>
+</body>
+</html>

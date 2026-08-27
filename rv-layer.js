@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.22
+ * レビュー注釈レイヤー v1.23
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.22";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.23";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -969,7 +969,7 @@ function copyText(){
   });
   out += "---\n";
   out += "AIへ: 対応が済んだものは、改訂版HTMLの </body> 直前に\n";
-  out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMM}\",ids:[\"対応したid\",...]}</script>\n";
+  out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMMSS}\",ids:[\"対応したid\",...]}</script>\n";
   out += "を埋め込むこと（revは毎回ユニークに。注釈レイヤーが次回表示時に自動で済みへ落とす）";
   if(open.some(function(c){ return c.kind === "block"; })){
     out += "\n〔枠〕が付いた行は、文字列でなくそのブロック（表・カード・図など）全体への指摘。" +
@@ -1082,7 +1082,7 @@ function reviewText(imageResult, open, sourceInfo){
       "DOMシリアライズ（表示中のページから復元。属性順序等に軽微な整形差が出ることがある）") + "\n\n";
   out += "## AIへの対応手順\n\n";
   out += "対応が済んだら、source/" + sourceInfo.filename + " の改訂版の </body> 直前に\n\n";
-  out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMM}\",ids:[\"対応したid\",...]}</script>\n\n";
+  out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMMSS}\",ids:[\"対応したid\",...]}</script>\n\n";
   out += "を埋め込むこと（revは毎回ユニークに。注釈レイヤーが次回表示時に自動で済みへ落とす）。\n\n";
   out += "**番号（下の「1.」「2.」…）は表示用の見出しで、正本は各コメントの id。" +
          "ids配列には番号でなくidを入れること。**\n";

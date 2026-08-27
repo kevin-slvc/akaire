@@ -26,7 +26,7 @@ zipで受け取ったレビューコメントに対応する。手順は以下�
 5. 対応できたコメントのIDだけを集め、source/配下のHTMLの改訂版の </body> 直前
    （rv-layer.js の読み込み行はそのまま残す。前でも後でもよい）に次を追加する:
 
-   <script>window.__rvResolved={rev:"r{今の日時 YYYYMMDDHHMM}",ids:["<id1>","<id2>",...]}</script>
+   <script>window.__rvResolved={rev:"r{今の日時 YYYYMMDDHHMMSS}",ids:["<id1>","<id2>",...]}</script>
 
    rev は今回限りのユニークな値にする（既存の値を使い回さない）。ids には**対応した
    コメントのIDだけ**を入れる。見たが対応しなかったコメントのIDは入れない

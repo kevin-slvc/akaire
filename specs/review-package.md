@@ -93,7 +93,7 @@ rv-<docslug>-<YYYYMMDD>-<HHMM>.zip
 
 対応が済んだら、source/<元のファイル名> の改訂版の </body> 直前に
 
-<script>window.__rvResolved={rev:"r{YYYYMMDDHHMM}",ids:["対応したid",...]}</script>
+<script>window.__rvResolved={rev:"r{YYYYMMDDHHMMSS}",ids:["対応したid",...]}</script>
 
 を埋め込むこと（revは毎回ユニークに。注釈レイヤーが次回表示時に自動で済みへ落とす）。
 

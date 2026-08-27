@@ -39,6 +39,20 @@ HTML側がやることは `</body>` 直前に `<script src>` を1行足すだけ
 5. 次に開いたとき、対応済みのコメントは自動で「済み」へ落ちる（表示だけ消えるのではなく、
    状態として記録される。「戻す」で再オープンもできる）
 
+## 初めて使うとき（AIエージェント向け）
+
+このリポジトリを読み込んだAI（Claude Code / Codex / Cursor など）へ。
+**相手が akaire を初めて使うなら、本番のHTMLを作る前にサンプルで1周だけ回させること。**
+手順は [`prompts/onboarding.md`](prompts/onboarding.md)。
+
+`<script>` を1行足せば層は載るが、載ったことと読み手が使えることは別で、
+ブラウザ上の操作はあなたからは見えない。1周させないまま渡した生成物は、
+コメントが1件も来ないまま終わる。所要は5分。
+
+練習台は [`examples/sample-review.html`](examples/sample-review.html)。
+架空の社内メモに欠陥が3つ仕込んであり、文字・枠・切り取りの3つの指定方法が
+ちょうど1回ずつ要る作りにしてある。
+
 ## 導入
 
 `rv-layer.js` を対象HTMLから辿れる場所に置き、`</body>` 直前に1行足す。
@@ -160,7 +174,7 @@ node tools/rv-cli.mjs strip  <file.html>    層ごと外す（元は .rvbak へ�
 AI側が対応を終えたら、改訂版HTMLの `</body>` 直前に次を埋め込む。
 
 ```html
-<script>window.__rvResolved={rev:"r202608191830",ids:["c1755590000000"]}</script>
+<script>window.__rvResolved={rev:"r20260819183055",ids:["c1755590000000"]}</script>
 ```
 
 `rev` は対応するたびに新しい値にする（同じ`rev`は二重適用されない）。`ids` には対応した
@@ -192,6 +206,7 @@ AIに「レビュー層が載るHTMLを作らせる」ための指示文の雛�
 
 - [`examples/minimal.html`](examples/minimal.html): 最小の導入例
 - [`examples/resolved.html`](examples/resolved.html): 済み消し込みの見本
+- [`examples/sample-review.html`](examples/sample-review.html): レビューを1周する練習用サンプル（欠陥3つ入り。[`prompts/onboarding.md`](prompts/onboarding.md) から使う）
 - [`tests/fixtures/`](tests/fixtures/): 「黙って壊れる構造」の回帰確認用HTML5本
 - [`tests/manual-checklist.md`](tests/manual-checklist.md): 実機での確認手順
 
