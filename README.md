@@ -44,7 +44,7 @@ HTML側がやることは `</body>` 直前に `<script src>` を1行足すだけ
 このリポジトリを読み込んだAI（Claude Code / Codex / Cursor など）へ。
 **相手が akaire を初めて使うなら、本番のHTMLを作る前にサンプルで1周だけ回させること。**
 手順は [`prompts/onboarding.md`](prompts/onboarding.md)。
-**聞くのは一度だけ。** 済んだか飛ばしたかは `rv-layer.js` の隣の
+**聞くのは一度だけ。** 済んだか飛ばしたかは akaire のルートの
 `.akaire-onboarded` に残るので、次の会話では何も聞かずに本番へ進む。
 もう一度練習したくなったら、このファイルを消せばよい。
 
