@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.25
+ * レビュー注釈レイヤー v1.26
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.25";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.26";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -132,6 +132,11 @@ var CSS = ""
 +"#rvpop textarea{width:100%;min-height:70px;font:inherit;font-size:13px;"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:6px;padding:8px;resize:vertical;"
 +"background:#fff;color:var(--rv-text,var(--ink,#1a1a1a))}"
++"#rvpop textarea:focus{outline:2px solid var(--rv-accent,#a90000);outline-offset:1px;"
++"border-color:var(--rv-accent,#a90000)}"
++"#rvpop button:focus-visible,#rvbar button:focus-visible,"
++"#rvdonepanel button:focus-visible,#rvthread button:focus-visible"
++"{outline:2px solid var(--rv-accent,#a90000);outline-offset:2px}"
 +"#rvpop .row{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}"
 +"#rvpop button{font:inherit;font-size:12px;border:0;border-radius:6px;"
 +"padding:6px 12px;cursor:pointer;background:var(--rv-accent,#a90000);color:#fff}"
