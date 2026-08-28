@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.26
+ * レビュー注釈レイヤー v1.27
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -15,7 +15,7 @@
  * 送付の前にファイルから層を外す作業は要らない。
  *
  * できること:
- *   - テキスト選択への指摘（1文字から付けられる）
+ *   - テキスト選択への指摘（1文字から。既存の印はクリックで開き、印上のドラッグは新規）
  *   - 表・カード・図などブロック単位への指摘（「枠」ボタン、または Option+クリック）
  *   - 画面上で矩形に囲った範囲への指摘（切り取り）
  *   - 指摘への画像添付（ペースト / ドロップ）と、指摘への追記
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.26";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.27";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -328,22 +328,24 @@ function buildDOM(){
   document.body.appendChild(donePanel);
 
   // rvmarks（枠コメントの枠線とバッジ。本文のDOMには触らず上に重ねる）
+  // bodyにtransformがあっても座標を二重に変換しないよう、矩形レイヤーはbodyの外へ置く。
+  var overlayRoot = document.documentElement;
   var marks = document.createElement("div"); marks.id = "rvmarks";
-  document.body.appendChild(marks);
+  overlayRoot.appendChild(marks);
 
   // rvsel（コメントを書いている間、対象にした文字列を見えるようにしておく仮マーク）
   var selLayer = document.createElement("div"); selLayer.id = "rvsel";
-  document.body.appendChild(selLayer);
+  overlayRoot.appendChild(selLayer);
 
   // rvcrop（写真の切り取りのように矩形を引くときの枠。外側は影で暗くする）
   var crop = document.createElement("div"); crop.id = "rvcrop";
   crop.appendChild(document.createElement("span"));
-  document.body.appendChild(crop);
+  overlayRoot.appendChild(crop);
 
   // rvhover（枠を選んでいる間の候補表示）
   var hov = document.createElement("div"); hov.id = "rvhover";
   hov.appendChild(document.createElement("span"));
-  document.body.appendChild(hov);
+  overlayRoot.appendChild(hov);
 
   // rvtoast
   var toastEl = document.createElement("div"); toastEl.id = "rvtoast";
@@ -637,6 +639,14 @@ function headingOf(node){
 
 // CC申告レビジョンの自動消し込み
 function applyResolved(){
+  var resolvedTags = 0;
+  var scripts = document.querySelectorAll("script");
+  for(var i=0;i<scripts.length;i++){
+    if(scripts[i].textContent.indexOf("__rvResolved") !== -1) resolvedTags++;
+  }
+  if(resolvedTags >= 2){
+    toast("__rvResolved が " + resolvedTags + "個あります。最後の1つしか効きません。古いタグを消して1つにまとめてください");
+  }
   var r = window.__rvResolved;
   if(!r || !r.rev || !Array.isArray(r.ids)) return;
   if(store.appliedRevs.indexOf(r.rev) !== -1) return; // 適用済みrevは無視
@@ -814,7 +824,8 @@ function blockOf(node, endNode){
 }
 function clearMarks(){
   var ms = ROOT.querySelectorAll("mark.rv");
-  for(var i=0;i<ms.length;i++){
+  // 同じ文字列への複数コメントはmarkが入れ子になる。内側から外すと番号を取り違えない。
+  for(var i=ms.length-1;i>=0;i--){
     var m = ms[i], p = m.parentNode;
     var num = m.querySelector(".rvnum"); if(num) num.remove();
     while(m.firstChild) p.insertBefore(m.firstChild, m);
@@ -976,6 +987,14 @@ function copyText(){
   out += "AIへ: 対応が済んだものは、改訂版HTMLの </body> 直前に\n";
   out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMMSS}\",ids:[\"対応したid\",...]}</script>\n";
   out += "を埋め込むこと（revは毎回ユニークに。注釈レイヤーが次回表示時に自動で済みへ落とす）";
+  out += "\n番号（「1.」「2.」…）は表示順で毎回変わる。ids配列には番号でなくidを入れること";
+  out += "\n対応しなかったコメントのidをidsに含めないこと";
+  out += "\nrv-layer.js の読み込み行を削除しないこと";
+  if(window.__rvResolved || store.appliedRevs.length > 0){
+    out += "\n既存の __rvResolved がある場合は、古いタグを消して1つにまとめ、" +
+           "idsは前回分と今回分の和集合、revは今回の新しい値にすること。" +
+           "タグを2つ以上置くと後のタグが前を上書きし、先のidsが一度も処理されず消し込みが黙って落ちる";
+  }
   if(open.some(function(c){ return c.kind === "block"; })){
     out += "\n〔枠〕が付いた行は、文字列でなくそのブロック（表・カード・図など）全体への指摘。" +
            "タグ名とクラス、続く「…」の先頭テキストで該当箇所を特定すること";
@@ -1002,7 +1021,7 @@ function stripRvChrome(docEl){
     if(chrome[i].parentNode) chrome[i].parentNode.removeChild(chrome[i]);
   }
   var marks = docEl.querySelectorAll("mark.rv");
-  for(var j=0;j<marks.length;j++){
+  for(var j=marks.length-1;j>=0;j--){
     var m = marks[j], p = m.parentNode;
     if(!p) continue;
     var num = m.querySelector(".rvnum"); if(num) num.remove();
@@ -1069,7 +1088,7 @@ function sourceFileName(){
   var name = LEGACY_DOC;
   return /\.html?$/i.test(name) ? name : (docSlug() + ".html");
 }
-// zip内の review.md。copyText() は既存契約を保つため変更せず、こちらは別に組み立てる。
+// zip内の review.md。copyText() とは別に組み立てるが、済み消し込みの契約文は揃える。
 // AIが指示の末尾を読み落とすことがあるため、対応手順とidの正本宣言は冒頭に置く。
 // ページ由来の文字列は改行を空白へ畳み、Markdownのコードフェンスになる記号を逃がす。
 function reviewPageText(value){
@@ -1096,8 +1115,12 @@ function reviewText(imageResult, open, sourceInfo){
   out += "対応が済んだら、source/" + sourceInfo.filename + " の改訂版の </body> 直前に\n\n";
   out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMMSS}\",ids:[\"対応したid\",...]}</script>\n\n";
   out += "を埋め込むこと（revは毎回ユニークに。注釈レイヤーが次回表示時に自動で済みへ落とす）。\n\n";
-  out += "**番号（下の「1.」「2.」…）は表示用の見出しで、正本は各コメントの id。" +
-         "ids配列には番号でなくidを入れること。**\n";
+  out += "**番号（「1.」「2.」…）は表示順で毎回変わる。ids配列には番号でなくidを入れること。**\n";
+  if(window.__rvResolved || store.appliedRevs.length > 0){
+    out += "\n既存の __rvResolved がある場合は、古いタグを消して1つにまとめ、" +
+           "idsは前回分と今回分の和集合、revは今回の新しい値にすること。" +
+           "タグを2つ以上置くと後のタグが前を上書きし、先のidsが一度も処理されず消し込みが黙って落ちる\n";
+  }
   if(open.some(function(c){ return c.kind === "block"; })){
     out += "\n〔枠〕が付いたコメントは、文字列でなくそのブロック（表・カード・図など）全体への指摘。" +
            "タグ名とクラス、続く「…」の先頭テキストで該当箇所を特定すること\n";
@@ -2111,6 +2134,14 @@ function tryClose(){
   return true;
 }
 
+// 既存の印を選択したとき、表示用の番号(.rvnum)を新しいコメントの引用へ混ぜない。
+function rangeText(range){
+  var frag = range.cloneContents();
+  var nums = frag.querySelectorAll ? frag.querySelectorAll(".rvnum") : [];
+  for(var i=0;i<nums.length;i++) nums[i].remove();
+  return frag.textContent || "";
+}
+
 function bindEvents(){
   document.addEventListener("mouseup", function(ev){
     // 枠を動かしている最中の離しは、本文の選択でも枠外クリックでもない。
@@ -2134,8 +2165,10 @@ function bindEvents(){
       if(picked) startBlockComment(picked);
       return;
     }
+    var sel = window.getSelection();
+    var hasSelection = !!(sel && !sel.isCollapsed && sel.rangeCount > 0);
     var m = ev.target.closest ? ev.target.closest("mark.rv") : null;
-    if(m){
+    if(m && !hasSelection){
       var c = store.comments.filter(function(x){ return x.id === m.dataset.id; })[0];
       if(c){
         if(pop.style.display === "block" && !tryClose()) return;
@@ -2144,8 +2177,7 @@ function bindEvents(){
         openPop(r.left + r.width/2, r.bottom, c.quote, c.note, c.images); return;
       }
     }
-    var sel = window.getSelection();
-    if(!sel || sel.isCollapsed || sel.rangeCount === 0){ if(!editing) tryClose(); return; }
+    if(!hasSelection){ if(!editing) tryClose(); return; }
     var range = sel.getRangeAt(0);
     if(!ROOT.contains(range.commonAncestorContainer)) return;
     // 通常のブロック越えは従来通り切る。flex/gridの別アイテム越えはコンテナまで許す。
@@ -2154,15 +2186,16 @@ function bindEvents(){
       range = range.cloneRange();
       try{ range.setEnd(blk, blk.childNodes.length); }catch(e){}
     }
-    var quote = range.toString().replace(/\s+/g, " ").trim();
+    var selectedText = rangeText(range);
+    var quote = selectedText.replace(/\s+/g, " ").trim();
     // 1文字だけの選択も受ける。空白だけの微小ドラッグは正規化で空文字になるのでここで落ちる
     if(!quote) return;
     if(pop.style.display === "block" && !tryClose()) return;
     var f = flat();
     var raw = flatOffset(f, range.startContainer, range.startOffset);
     var before = raw >= 0 ? f.text.slice(Math.max(0, raw-CTX), raw) : "";
-    var after  = raw >= 0 ? f.text.slice(raw+range.toString().length, raw+range.toString().length+CTX) : "";
-    pending = {quote:range.toString(), before:before, after:after, pos:raw,
+    var after  = raw >= 0 ? f.text.slice(raw+selectedText.length, raw+selectedText.length+CTX) : "";
+    pending = {quote:selectedText, before:before, after:after, pos:raw,
       heading:headingOf(range.startContainer)};
     editing = null;
     guideAdvance("select");

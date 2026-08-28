@@ -31,7 +31,7 @@ const layer = read('rv-layer.js');
     `宛先の無い呼び出し=${[...advanced].filter(k => !keys.includes(k)).join(',') || 'なし'}`);
 }
 
-// 2. 版数が3箇所で揃っているか（RV_VERSION / package.json / CHANGELOG の先頭）
+// 2. 版数が4箇所で揃っているか（冒頭コメント / RV_VERSION / package.json / CHANGELOG の先頭）
 {
   const v = layer.match(/var RV_VERSION = "([\d.]+)"/)?.[1];
   const header = layer.match(/レビュー注釈レイヤー v([\d.]+)/)?.[1];

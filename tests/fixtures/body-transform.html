@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>body transform fixture</title>
+<style>
+body { margin: 32px; transform: translateY(20px); font-family: sans-serif; }
+.card { width: 360px; padding: 24px; border: 1px solid #999; }
+#crop-target { width: 300px; height: 120px; margin-top: 40px; background: #ddd; }
+</style>
+</head>
+<body>
+<main>
+  <h1>body transform の座標確認</h1>
+  <section class="card" id="block-target">
+    <h2>枠の対象</h2>
+    <p><strong id="text-target">変形されたbody内の選択対象テキスト</strong></p>
+  </section>
+  <figure id="crop-target">切り取り対象</figure>
+</main>
+<script src="../../rv-layer.js" data-rv-default="on"></script>
+</body>
+</html>
