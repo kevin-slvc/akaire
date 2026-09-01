@@ -132,6 +132,10 @@ check('2周目のコピー文だけ既存タグの統合を指示する',
   secondRoundOut.includes('古いタグを消して1つにまとめ') &&
   secondRoundOut.includes('前回分と今回分の和集合') &&
   secondRoundOut.includes('先のidsが一度も処理されず消し込みが黙って落ちる'));
+// 和集合だけを伝えると、読み手が「戻す」で再オープンした指摘がAIの手で再び済みへ落ちる。
+// 指摘が黙って消える型で、出力を目で読んでも矛盾に気づけないため機械で固定する。
+check('2周目の和集合指示に「戻す」分の除外が付いている',
+  secondRoundOut.includes('「戻す」で未済みへ戻したもののうち、今回対応していないidは和集合から外すこと'));
 await page.evaluate(() => { delete window.__rvResolved; });
 
 // 6. 済み消し込み — 実際の流れどおりファイルへ埋めて開き直す

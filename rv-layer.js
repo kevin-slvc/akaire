@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.27
+ * レビュー注釈レイヤー v1.28
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.27";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.28";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -135,7 +135,8 @@ var CSS = ""
 +"#rvpop textarea:focus{outline:2px solid var(--rv-accent,#a90000);outline-offset:1px;"
 +"border-color:var(--rv-accent,#a90000)}"
 +"#rvpop button:focus-visible,#rvbar button:focus-visible,"
-+"#rvdonepanel button:focus-visible,#rvthread button:focus-visible"
++"#rvdonepanel button:focus-visible,#rvthread button:focus-visible,"
++"#rvguide button:focus-visible"
 +"{outline:2px solid var(--rv-accent,#a90000);outline-offset:2px}"
 +"#rvpop .row{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}"
 +"#rvpop button{font:inherit;font-size:12px;border:0;border-radius:6px;"
@@ -639,10 +640,13 @@ function headingOf(node){
 
 // CC申告レビジョンの自動消し込み
 function applyResolved(){
+  // 文字列として名前が出るだけのscript（rv-layer.js をインライン展開した場合など）は数えない。
+  // 数えるのは __rvResolved へ実際に代入しているインラインscriptだけ。
   var resolvedTags = 0;
-  var scripts = document.querySelectorAll("script");
+  var ASSIGN = /(^|[^.\w$])(window\s*\.\s*)?__rvResolved\s*=[^=]/;
+  var scripts = document.querySelectorAll("script:not([src])");
   for(var i=0;i<scripts.length;i++){
-    if(scripts[i].textContent.indexOf("__rvResolved") !== -1) resolvedTags++;
+    if(ASSIGN.test(scripts[i].textContent)) resolvedTags++;
   }
   if(resolvedTags >= 2){
     toast("__rvResolved が " + resolvedTags + "個あります。最後の1つしか効きません。古いタグを消して1つにまとめてください");
@@ -993,6 +997,8 @@ function copyText(){
   if(window.__rvResolved || store.appliedRevs.length > 0){
     out += "\n既存の __rvResolved がある場合は、古いタグを消して1つにまとめ、" +
            "idsは前回分と今回分の和集合、revは今回の新しい値にすること。" +
+           "ただし読み手が「戻す」で未済みへ戻したもののうち、今回対応していないidは和集合から外すこと" +
+           "（載せると再び済みへ落ち、読み手の指摘が黙って消える）。" +
            "タグを2つ以上置くと後のタグが前を上書きし、先のidsが一度も処理されず消し込みが黙って落ちる";
   }
   if(open.some(function(c){ return c.kind === "block"; })){
@@ -1119,6 +1125,8 @@ function reviewText(imageResult, open, sourceInfo){
   if(window.__rvResolved || store.appliedRevs.length > 0){
     out += "\n既存の __rvResolved がある場合は、古いタグを消して1つにまとめ、" +
            "idsは前回分と今回分の和集合、revは今回の新しい値にすること。" +
+           "ただし読み手が「戻す」で未済みへ戻したもののうち、今回対応していないidは和集合から外すこと" +
+           "（載せると再び済みへ落ち、読み手の指摘が黙って消える）。" +
            "タグを2つ以上置くと後のタグが前を上書きし、先のidsが一度も処理されず消し込みが黙って落ちる\n";
   }
   if(open.some(function(c){ return c.kind === "block"; })){

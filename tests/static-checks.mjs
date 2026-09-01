@@ -42,6 +42,15 @@ const layer = read('rv-layer.js');
   check('版数: RV_VERSION と CHANGELOG 先頭', v === clog, `${v} vs ${clog}`);
 }
 
+// 2.5 2周目の和集合指示に「戻す」分の除外が付いているか（copyText と reviewText の両方）
+{
+  const clause = '「戻す」で未済みへ戻したもののうち、今回対応していないidは和集合から外すこと';
+  const union = (layer.match(/前回分と今回分の和集合/g) || []).length;
+  const excl = (layer.match(new RegExp(clause, 'g')) || []).length;
+  check('和集合を出す箇所と「戻す」除外の箇所が同数',
+    union > 0 && union === excl, `和集合=${union} vs 除外=${excl}`);
+}
+
 // 3. rev の案内が秒まで入っているか
 //    分止まりだと、同じ分に2回対応したとき2回目の rev が1回目と一致し、
 //    二重適用の防止に引っかかって ids すら見られず無視される（エラーは出ない）。
