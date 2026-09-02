@@ -90,6 +90,44 @@ async function save(label, note) {
     `1件目=${samePlace.first} / 2件目=${samePlace.second}`);
 }
 
+// 2b. 本文が長い指摘へ追記しても、開き直したとき最新の追記が見える（v1.29）
+//     スレッド欄は max-height:150px。本文8行でそれだけ埋まり、追記の行がその下へ隠れて
+//     「追記が保存されない」に見えていた（実機の録画で確認。保存自体はできていた）。
+{
+  const mark = page.locator('mark.rv').first();
+  await mark.click();
+  await page.waitForTimeout(250);
+  await page.locator('#rvthread button').first().click();   // 「直す」= 本文の書き直しへ
+  await page.waitForTimeout(150);
+  const longBody = ['塚本 賢志 / Kenshi Tsukamoto', '@dezainaz_ceo', '·', '15時間',
+    '直す順番は装飾より情報設計。', '', '01 余白→実物', '02 同じ強さ→主役1つ'].join('\n');
+  await page.locator('#rvnote').fill(longBody);
+  await page.locator('#rvsave').click();
+  await page.waitForTimeout(350);
+  await mark.click();
+  await page.waitForTimeout(250);
+  await page.locator('#rvnote').fill('追記1');
+  await page.locator('#rvsave').click();
+  await page.waitForTimeout(200);
+  const appendToast = (await page.locator('#rvtoast').textContent()) || '';
+  check('追記の保存後にトーストで知らせる', appendToast.includes('追記を保存しました'), `トースト=${appendToast}`);
+  await page.waitForTimeout(300);
+  await mark.click();
+  await page.waitForTimeout(250);
+  const seen = await page.evaluate(() => {
+    const box = document.getElementById('rvthread');
+    const sub = box.querySelector('.rvsub');
+    if (!sub) return { has: false };
+    const b = box.getBoundingClientRect(), s = sub.getBoundingClientRect();
+    return { has: true, overflow: box.scrollHeight > box.clientHeight,
+      visible: s.top >= b.top - 1 && s.bottom <= b.bottom + 1, text: sub.textContent };
+  });
+  check('本文が長くてスレッド欄が溢れる状態を作れた', seen.has && seen.overflow, JSON.stringify(seen));
+  check('開き直したとき最新の追記が見える位置にある', seen.has && seen.visible, JSON.stringify(seen));
+  await page.locator('#rvcancel').click();
+  await page.waitForTimeout(200);
+}
+
 // 3. 枠で表を選ぶ
 {
   await page.locator('#rvpick').click();

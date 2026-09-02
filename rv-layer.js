@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.28
+ * レビュー注釈レイヤー v1.29
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.28";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.29";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -2046,6 +2046,16 @@ function renderThread(){
     row.appendChild(t); row.appendChild(del);
     box.appendChild(row);
   });
+  scrollThreadToLatest();
+}
+// スレッド欄は max-height:150px で、本文が7〜8行あると追記の行がその下へ隠れる。
+// macOSはスクロールバーも出ないので、保存した追記が画面上は「保存されていない」と
+// 同じに見えた（v1.28まで。実機の録画で確認）。追記があるときは最新の追記が見える
+// 位置まで送る。本文は上へスクロールすれば読める
+function scrollThreadToLatest(){
+  var box = document.getElementById("rvthread");
+  if(!box || box.style.display === "none" || !box.querySelector(".rvsub")) return;
+  box.scrollTop = box.scrollHeight;
 }
 function openPop(x, y, quote, note, images){
   document.getElementById("rvquote").textContent = quote;
@@ -2059,6 +2069,7 @@ function openPop(x, y, quote, note, images){
   renderPopImgs();
   document.getElementById("rvdel").style.display = editing ? "" : "none";
   pop.style.display = "block";
+  scrollThreadToLatest();   // 非表示のうちは scrollHeight が0で送れないので、表示してから
   var w = pop.offsetWidth, left = Math.min(Math.max(8, x - w/2), window.innerWidth - w - 8);
   pop.style.left = left + "px";
   // 下に出すと画面からはみ出す位置（済みパネルの行・画面下端のマーク）では上へ返す
@@ -2254,7 +2265,7 @@ function bindEvents(){
     }
     if(editing && editingBody && !note){ toast("本文が空です"); return; }
     if(!note && !popImgs.length && !removedImages.length){ toast("コメントが空です"); return; }
-    var reopened = null;
+    var reopened = null, appended = 0;
     if(editing){
       touchComment(editing);
       var imgsE = flushImages(editing);
@@ -2268,6 +2279,7 @@ function bindEvents(){
           // 作成時刻は分までしか無いので、同じ分に同じ文面を2回書くと後のほうが消える
           var reply = {id:newCommentId(), text:note, created:nowISO()};
           c.replies.push(reply); markReplySeen(reply);
+          appended = c.replies.length;
         }
         // コピー文面は未済みのコメントしか拾わない。済みのまま書き換えるとAIへ届かず、
         // 書いたのに渡らない失敗になる。中身を変えたら未済みへ戻す（読むだけなら保存を押さない）
@@ -2303,7 +2315,10 @@ function bindEvents(){
     guideAdvance("save");
     if(savedKind === "block") guideAdvance("block");
     if(savedKind === "crop") guideAdvance("crop");
+    // 追記は保存後にポップアップが閉じるので、画面上の変化がない。本文が長いと次に開いても
+    // 追記はスレッド欄の下に隠れるため、保存できたことをここで言う（v1.29）
     if(reopened) toast(reopened);
+    else if(appended) toast("追記を保存しました（" + appended + "件目）");
   };
   document.getElementById("rvdel").onclick = function(){
     touchComment(editing);
