@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.29
+ * レビュー注釈レイヤー v1.30
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -63,7 +63,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.29";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.30";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -168,7 +168,7 @@ var CSS = ""
 +"#rvpop .rvimgs button{position:absolute;top:-6px;right:-6px;width:18px;height:18px;"
 +"padding:0;border-radius:999px;font-size:11px;line-height:1;background:var(--rv-inverse,var(--surface-dark,#000000));color:#fff}"
 +"#rvpop .rvhint{font-size:11px;color:var(--rv-text-muted,var(--muted,#767676));margin:6px 0 0}"
-+"#rvthread{margin:0 0 8px;font-size:12px;line-height:1.5;max-height:150px;overflow:auto}"
++"#rvthread{margin:0 0 8px;font-size:12px;line-height:1.5;max-height:max(150px,calc(100vh - 340px));overflow:auto}"
 +"#rvthread .rvline{display:flex;gap:6px;align-items:flex-start;padding:4px 0;"
 +"border-bottom:1px solid var(--rv-border,var(--hairline,#cccccc))}"
 +"#rvthread .rvline:last-child{border-bottom:0}"
@@ -178,6 +178,8 @@ var CSS = ""
 +"#rvthread button{flex:0 0 auto;font:inherit;font-size:10px;border:0;border-radius:5px;"
 +"padding:2px 6px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text-muted,var(--muted,#767676))}"
 +"#rvthread button:hover{color:var(--rv-text,var(--body,#1a1a1a))}"
++"#rvthread .rvsubdel{opacity:.4;padding:2px 5px}"
++"#rvthread .rvline:hover .rvsubdel,#rvthread .rvsubdel:focus-visible{opacity:1}"
 +"#rvpop.rvdrag{outline:2px dashed var(--rv-accent,#a90000);outline-offset:3px}"
 +"#rvmarks{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483600}"
 +"#rvsel{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483615;pointer-events:none}"
@@ -2037,7 +2039,7 @@ function renderThread(){
     var row = document.createElement("div"); row.className = "rvline rvsub";
     var t = document.createElement("span"); t.className = "rvtxt"; t.textContent = r.text;
     var del = document.createElement("button"); del.type = "button";
-    del.textContent = "×"; del.title = "この追記を消す";
+    del.textContent = "×"; del.title = "この追記を消す"; del.className = "rvsubdel";
     del.onclick = function(ev){
       ev.stopPropagation();
       touchComment(c.id);
@@ -2048,10 +2050,11 @@ function renderThread(){
   });
   scrollThreadToLatest();
 }
-// スレッド欄は max-height:150px で、本文が7〜8行あると追記の行がその下へ隠れる。
-// macOSはスクロールバーも出ないので、保存した追記が画面上は「保存されていない」と
-// 同じに見えた（v1.28まで。実機の録画で確認）。追記があるときは最新の追記が見える
-// 位置まで送る。本文は上へスクロールすれば読める
+// スレッド欄の高さは画面に合わせて伸びる（max(150px, 100vh - 340px)。340px は引用の帯・
+// 画像・入力欄・ボタンのぶん）。高さ932pxの画面なら本文8行＋追記5件がそのまま出る（v1.30）。
+// 低い画面では150pxまで縮み、本文が7〜8行あると追記の行がその下へ隠れる。macOSは
+// スクロールバーも出ないので、保存した追記が画面上は「保存されていない」と同じに見えた
+// （v1.28まで。実機の録画で確認）。溢れたときは最新の追記が見える位置まで送る
 function scrollThreadToLatest(){
   var box = document.getElementById("rvthread");
   if(!box || box.style.display === "none" || !box.querySelector(".rvsub")) return;

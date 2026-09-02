@@ -114,17 +114,32 @@ async function save(label, note) {
   await page.waitForTimeout(300);
   await mark.click();
   await page.waitForTimeout(250);
-  const seen = await page.evaluate(() => {
+  const measure = () => page.evaluate(() => {
     const box = document.getElementById('rvthread');
-    const sub = box.querySelector('.rvsub');
+    const main = box.querySelector('.rvline'), sub = box.querySelector('.rvsub');
     if (!sub) return { has: false };
-    const b = box.getBoundingClientRect(), s = sub.getBoundingClientRect();
-    return { has: true, overflow: box.scrollHeight > box.clientHeight,
-      visible: s.top >= b.top - 1 && s.bottom <= b.bottom + 1, text: sub.textContent };
+    const b = box.getBoundingClientRect(), s = sub.getBoundingClientRect(), m = main.getBoundingClientRect();
+    const inBox = r => r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
+    return { has: true, overflow: box.scrollHeight > box.clientHeight, subVisible: inBox(s), bodyVisible: inBox(m),
+      maxH: getComputedStyle(box).maxHeight, text: sub.textContent };
   });
-  check('本文が長くてスレッド欄が溢れる状態を作れた', seen.has && seen.overflow, JSON.stringify(seen));
-  check('開き直したとき最新の追記が見える位置にある', seen.has && seen.visible, JSON.stringify(seen));
+  // v1.30: 欄の高さは画面に合わせて伸びる。高さ900なら本文8行と追記が両方そのまま出る
+  const tall = await measure();
+  check('高さ900の画面では本文8行と追記が両方見える（欄が画面に合わせて伸びる）',
+    tall.has && !tall.overflow && tall.subVisible && tall.bodyVisible, JSON.stringify(tall));
   await page.locator('#rvcancel').click();
+  await page.waitForTimeout(200);
+  // 低い画面では150pxまで縮み、開き直したとき最新の追記が見える位置へ送られる（v1.29）
+  await page.setViewportSize({ width: 1280, height: 480 });
+  await page.waitForTimeout(200);
+  await mark.click();
+  await page.waitForTimeout(250);
+  const short = await measure();
+  check('高さ480の画面では欄が溢れる（150pxまで縮む）', short.has && short.overflow, JSON.stringify(short));
+  check('溢れたときは開き直すと最新の追記が見える位置にある', short.has && short.subVisible, JSON.stringify(short));
+  await page.locator('#rvcancel').click();
+  await page.waitForTimeout(200);
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.waitForTimeout(200);
 }
 
