@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.30
+ * レビュー注釈レイヤー v1.31
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -53,8 +53,13 @@ var DEFAULT_ON = !!(SELF &&
   /^(on|1|true)$/i.test(SELF.getAttribute("data-rv-default") || ""));
 
 var LEGACY_DOC = (location.pathname.split("/").pop() || "untitled");
-var DOC = location.pathname || "/";
-var KEY = "rv:" + DOC;
+var PATH_DOC = location.pathname || "/";
+var STABLE_DOC = SELF && SELF.getAttribute("data-rv-doc-id") || "";
+// Empty/invalid IDs retain path storage; IDs never share the pathname key namespace.
+if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(STABLE_DOC)) STABLE_DOC = "";
+var DOC = STABLE_DOC || PATH_DOC;
+var PATH_KEY = "rv:" + PATH_DOC;
+var KEY = STABLE_DOC ? "rv:doc-id:" + STABLE_DOC : PATH_KEY;
 var LEGACY_KEY = "rv:" + LEGACY_DOC;
 var ENABLE_KEY = "rv-layer:enabled";
 // 旧キーは「ファイル名だけ」で作られていたため、同名のファイルが複数のパスにあると
@@ -63,7 +68,7 @@ var ENABLE_KEY = "rv-layer:enabled";
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.30";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.31";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -73,6 +78,7 @@ var seenIds = {};         // このタブが一度でも見た/作ったコメ�
 var seenReplyKeys = {};   // 見た追記が手元に無ければ、このタブで削除したものとして復活を防ぐ
 var touchedIds = {};      // このタブで内容・状態・画像を変更したコメントID
 var quarantined = [];     // 壊れていて読み込めなかったコメント（捨てずに持っておく）
+var revisionIndex = 0;
 var editing = null;       // 編集中コメントid
 var pending = null;       // 未保存の新規選択
 var pop = null;           // #rvpop（buildDOM後に確定）
@@ -111,16 +117,17 @@ var CSS = ""
 +"mark.rv:hover{background:var(--rv-mark-hover,#ffdada)}"
 +"mark.rv .rvnum{font-size:10px;vertical-align:super;color:var(--rv-accent-hover,#ce0000);"
 +"font-weight:700;margin-left:2px;font-family:ui-monospace,Menlo,monospace}"
-+"#rvbar{position:fixed;right:20px;bottom:20px;z-index:2147483630;display:flex;gap:8px;"
++"#rvbar{position:fixed;right:20px;bottom:20px;z-index:2147483630;display:flex;flex-wrap:wrap;gap:8px;max-width:calc(100vw - 40px);"
 +"align-items:center;background:var(--rv-inverse,var(--surface-dark,#000000));color:var(--rv-on-inverse,#ffffff);"
 +"border-radius:999px;padding:9px 10px 9px 18px;font-size:13px;"
 +"box-shadow:0 4px 18px rgba(0,0,0,.22)}"
-+"#rvbar button{font:inherit;font-size:12px;border:0;border-radius:999px;"
++"#rvbar button{font:inherit;font-size:12px;white-space:nowrap;flex-shrink:0;border:0;border-radius:999px;"
 +"padding:6px 13px;cursor:pointer;background:var(--rv-accent,#a90000);color:#fff}"
 +"#rvbar button:hover{background:var(--rv-accent-hover,#ce0000)}"
 +"#rvbar button.ghost{background:transparent;color:var(--rv-on-inverse-muted,#b3b3b3);padding:6px 9px}"
 +"#rvbar button.ghost:hover{color:var(--rv-on-inverse,#ffffff)}"
-+"#rvcount{margin-right:4px;letter-spacing:.02em}"
++"#rvcount{margin-right:4px;letter-spacing:.02em;white-space:nowrap}"
++"@media(max-width:700px){#rvbar{border-radius:18px}}"
 +"#rvpop{position:absolute;z-index:2147483640;width:290px;background:var(--rv-surface,var(--canvas,#ffffff));"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:10px;padding:12px;"
 +"box-shadow:0 8px 26px rgba(0,0,0,.18);display:none}"
@@ -142,8 +149,8 @@ var CSS = ""
 +"#rvpop button{font:inherit;font-size:12px;border:0;border-radius:6px;"
 +"padding:6px 12px;cursor:pointer;background:var(--rv-accent,#a90000);color:#fff}"
 +"#rvpop button.ghost{background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
-+"#rvdonepanel{position:fixed;right:20px;bottom:70px;z-index:2147483640;width:320px;"
-+"max-height:300px;overflow:auto;background:var(--rv-surface,var(--canvas,#ffffff));"
++"#rvdonepanel{position:fixed;right:20px;bottom:70px;z-index:2147483640;width:320px;max-width:calc(100vw - 40px);"
++"max-height:min(70vh,560px);overflow:auto;background:var(--rv-surface,var(--canvas,#ffffff));"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:10px;padding:10px;"
 +"box-shadow:0 8px 26px rgba(0,0,0,.18);display:none;font-size:12.5px}"
 +"#rvdonepanel .rvdonerow{display:flex;justify-content:space-between;align-items:center;"
@@ -155,6 +162,13 @@ var CSS = ""
 +"#rvdonepanel .rvdonerow button{font:inherit;font-size:11px;border:0;border-radius:6px;"
 +"padding:4px 9px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdonepanel .rvdoneempty{color:var(--rv-text-muted,var(--muted,#767676));padding:6px 4px}"
++"#rvdonepanel .rvrevision{padding:8px 4px 16px;margin-bottom:8px;border-bottom:1px solid var(--rv-border,var(--hairline,#cccccc));white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;color:var(--rv-text,var(--body,#1a1a1a))}"
++"#rvdonepanel .rvrevision-position{margin:16px 0 12px;color:var(--rv-text-muted,var(--muted,#767676))}"
++"#rvdonepanel .rvrevision-actions{display:flex;flex-wrap:wrap;gap:8px;white-space:normal}"
++"#rvdonepanel .rvrevision button{font:inherit;font-size:12px;border:0;border-radius:6px;padding:7px 10px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
++"#rvdonepanel .rvrevision button:hover{background:var(--rv-mark-hover,#ffdada)}"
++"#rvdonepanel .rvrevision button.rvrevision-confirm{background:var(--rv-accent,#a90000);color:var(--rv-on-inverse,#ffffff)}"
++"#rvdonepanel .rvrevision button:disabled{opacity:.4;cursor:default}"
 +"#rvtoast{position:fixed;left:50%;bottom:78px;transform:translateX(-50%);z-index:2147483646;"
 +"background:var(--rv-inverse,var(--surface-dark,#000000));color:var(--rv-on-inverse,#ffffff);padding:9px 18px;border-radius:999px;"
 +"font-size:13px;opacity:0;transition:opacity .18s;pointer-events:none}"
@@ -231,7 +245,7 @@ function injectCSS(){
 // ---------- DOM 自己注入 ----------
 var RV_RESERVED_IDS = ["rvorphan","rvbar","rvcount","rvdone","rvcopy","rvexport","rvpick","rvclear",
   "rvpop","rvquote","rvimgs","rvnote","rvdel","rvcancel","rvsave","rvdonepanel","rvdonelist","rvdir",
-  "rvthread",
+  "rvthread","rvportable","rvimport","rvimportfile",
   "rvmarks","rvsel","rvcrop","rvhover","rvtoast",
   "rvguide","rvguidetxt","rvguidestep","rvguidenext","rvguideskip"];
 function rvCollisions(){
@@ -297,6 +311,7 @@ function buildDOM(){
   var clearBtn = document.createElement("button"); clearBtn.id = "rvclear"; clearBtn.className = "ghost"; clearBtn.textContent = "消去";
   bar.appendChild(countSpan); bar.appendChild(doneBtn); bar.appendChild(pickBtn);
   bar.appendChild(copyBtn); bar.appendChild(exportBtn);
+  buildPortabilityUI(bar);
   // 画像の保存先。使えないブラウザでも出す＝押したときに理由を言う。
   // 隠すと「ボタンが無い」が「未対応」なのか「古いファイルが読まれている」なのか
   // 見分けられなくなる（2026-08-21 実地で詰まった）
@@ -444,7 +459,26 @@ function claimLegacy(doc){
   }catch(e){}
 }
 
+// The destination carries migration provenance in the same write as its comments.
+// If the separate ownership write fails, a later load can still prevent a second claim.
+function migrationPathOwner(){
+  var owner = localStorage.getItem("rv-layer:path-owner:" + PATH_DOC);
+  if(owner) return owner;
+  for(var i=0;i<localStorage.length;i++){
+    var key = localStorage.key(i);
+    if(!key || key.indexOf("rv:doc-id:") !== 0) continue;
+    var saved;
+    try{ saved = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    if(saved && saved.migratedFromPath === PATH_DOC){
+      var found = key.slice("rv:doc-id:".length);
+      if(owner && owner !== found) return "!conflicting-migration-owners";
+      owner = found;
+    }
+  }
+  return owner;
+}
 function migrateLegacyStore(){
+  if(STABLE_DOC) store.migratedFromPath = PATH_DOC;
   try{
     localStorage.setItem(KEY, JSON.stringify(store));
   }catch(e){
@@ -459,12 +493,22 @@ function migrateLegacyStore(){
       toast("容量のためサムネイルを除いて旧キーから移行しました");
     }catch(e2){
       console.warn("[rv] 旧キーの保存済みコメントを新キーへ移行できません。旧キーは残します。", e2);
+      noOverwrite = true; memoryOnly = true;
       return;
     }
   }
   // 旧キー自体は消さず互換用に残すが、このパスが取り込んだことを記録して
   // 同名の別パスが同じものを読まないようにする。
-  claimLegacy(DOC);
+  if(STABLE_DOC){
+    try{ localStorage.setItem("rv-layer:path-owner:" + PATH_DOC, STABLE_DOC); }
+    catch(ownerError){
+      // The saved destination provenance remains authoritative even if this index fails.
+      noOverwrite = true; memoryOnly = true;
+      console.warn("[rv] 移行先は保存しましたが移行所有権の索引を保存できませんでした。", ownerError);
+      return;
+    }
+  }
+  claimLegacy(PATH_DOC);
   console.info("[rv] 保存済みコメントをページパス別のキーへ移行しました" +
                "（旧キーは互換用に保持。取り込み元はこのパスに固定）。");
 }
@@ -494,18 +538,31 @@ function sanitizeComments(list){
 function load(){
   try{
     var raw = localStorage.getItem(KEY);
-    var fromLegacy = false;
-    if(!raw && LEGACY_KEY !== KEY && legacyClaimableBy(DOC)){
+    var fromLegacy = false, fromPath = false, foreignPath = false;
+    if(!raw && STABLE_DOC){
+      var pathOwner = migrationPathOwner();
+      foreignPath = !!pathOwner && pathOwner !== STABLE_DOC;
+      if(!foreignPath){ raw = localStorage.getItem(PATH_KEY); fromPath = !!raw; }
+    }
+    if(!raw && !foreignPath && LEGACY_KEY !== KEY && legacyClaimableBy(PATH_DOC)){
       raw = localStorage.getItem(LEGACY_KEY);
       fromLegacy = !!raw;
     }
     if(raw){
       var o = JSON.parse(raw);
-      if(o && (o.docId === DOC || (fromLegacy && o.docId === LEGACY_DOC)) && Array.isArray(o.comments)){
+      if(o && (o.docId === DOC || (fromPath && o.docId === PATH_DOC) || (fromLegacy && o.docId === LEGACY_DOC)) && Array.isArray(o.comments)){
         store = o;
         store.docId = DOC;
         if(!Array.isArray(store.appliedRevs)) store.appliedRevs = [];
         store.comments = sanitizeComments(store.comments);
+        if(fromPath){
+          store.migratedFromPath = PATH_DOC;
+          try{
+            localStorage.setItem(KEY, JSON.stringify(store));
+            localStorage.setItem("rv-layer:path-owner:" + PATH_DOC, STABLE_DOC);
+          }
+          catch(migrationError){ noOverwrite = true; memoryOnly = true; }
+        }
         if(fromLegacy) migrateLegacyStore();
       }else{
         // ここに来るのは「保存済みの何かはあるが、この文書のものとして読めなかった」場合。
@@ -517,7 +574,7 @@ function load(){
       }
     }
   }catch(e){
-    memoryOnly = true;
+    noOverwrite = true; memoryOnly = true;
     console.warn("[rv] localStorage 不可。今開いている間だけ保持します。", e);
   }
   store.comments.forEach(function(c){
@@ -660,7 +717,8 @@ function applyResolved(){
   store.comments.forEach(function(c){
     if(c.status === "open" && r.ids.indexOf(c.id) !== -1){
       touchComment(c.id);
-      c.status = "done"; c.resolvedRev = r.rev; c.resolvedAt = nowISO(); n++;
+      c.status = "done"; c.resolvedRev = r.rev; c.resolvedAt = nowISO();
+      delete c.reviewedRev; delete c.reviewedAt; n++;
     }
   });
   store.appliedRevs.push(r.rev);
@@ -905,18 +963,91 @@ function render(){
   refreshLayoutObserver();
 
   var doneBtn = document.getElementById("rvdone");
-  if(doneBtn) doneBtn.style.display = done.length ? "" : "none";
-  if(!done.length){
+  if(doneBtn) doneBtn.style.display = (done.length || revisionComments().length) ? "" : "none";
+  if(!done.length && !revisionComments().length){
     var dp = document.getElementById("rvdonepanel");
     if(dp) dp.style.display = "none";
   }
   renderDonePanel();
 }
 
+// 確認は済み状態と独立。現在のrevで実際に消し込まれたコメントだけを扱う。
+function revisionComments(){
+  var r = window.__rvResolved;
+  return r && r.rev ? store.comments.filter(function(c){ return c.resolvedRev === r.rev; }) : [];
+}
+function revisionTarget(c){
+  // 古い位置への近似ジャンプはしない。引用（文脈付き）が一意に一致するときだけ移動する。
+  if(!c.quote) return null;
+  if(c.kind === "block" || c.kind === "crop"){
+    if(!c.tag) return null;
+    var nodes;
+    try{ nodes = ROOT.querySelectorAll(c.tag); }catch(e){ return null; }
+    var matches = [];
+    for(var j=0;j<nodes.length;j++){
+      if(!isRvChrome(nodes[j]) && c.fp && fpOf(nodes[j], flat()) === c.fp &&
+         (!c.anchor || !c.anchor.tail || blockAnchor(nodes[j], flat()).tail === c.anchor.tail)) matches.push(nodes[j]);
+    }
+    return matches.length === 1 ? matches[0] : null;
+  }
+  var f = flat(), needle = (c.before || "") + c.quote + (c.after || "");
+  var at = f.text.indexOf(needle);
+  if(at < 0 || f.text.indexOf(needle, at + 1) !== -1) return null;
+  var hit = locate(f, at + (c.before || "").length);
+  return hit && hit.node.parentElement;
+}
+function renderRevisionReview(list){
+  var items = revisionComments();
+  if(!items.length) return;
+  var box = document.createElement("div");
+  box.className = "rvrevision";
+  list.appendChild(box);
+  var title = document.createElement("strong"); title.textContent = "今回のAI対応を確認"; box.appendChild(title);
+  revisionIndex = Math.max(0, Math.min(revisionIndex, items.length - 1));
+  var c = items[revisionIndex];
+  var text = document.createElement("div");
+  text.textContent = "\n" + (revisionIndex + 1) + " / " + items.length +
+    (c.status === "open" ? "・未済みに戻しました" : c.reviewedRev === c.resolvedRev ? "・確認済み" : "・未確認") +
+    "\n\nセクション：\n" + (c.heading || "（なし）") + "\n\n修正前の引用：\n" + c.quote + "\n\n指摘：\n" + c.note;
+  (c.replies || []).forEach(function(reply){ if(reply && typeof reply.text === "string") text.textContent += "\n\n追記：\n" + reply.text; });
+  box.appendChild(text);
+  var target = revisionTarget(c);
+  var position = document.createElement("div");
+  position.textContent = target ? "引用に一致する箇所へ移動できます" : "位置不明：引用が変更されたか、一意に照合できません";
+  position.className = "rvrevision-position";
+  box.appendChild(position);
+  var actions = document.createElement("div"); actions.className = "rvrevision-actions"; box.appendChild(actions);
+  function button(label, action, disabled){
+    var b = document.createElement("button"); b.textContent = label; b.disabled = !!disabled;
+    b.onclick = function(){ if(pop.style.display === "block" && !tryClose()) return; action(); };
+    if(label === "確認した") b.className = "rvrevision-confirm";
+    actions.appendChild(b);
+  }
+  button("前", function(){ revisionIndex--; renderDonePanel(); }, revisionIndex === 0);
+  button("次", function(){ revisionIndex++; renderDonePanel(); }, revisionIndex === items.length - 1);
+  button("箇所へ移動", function(){ var el = revisionTarget(c); if(el) el.scrollIntoView({block:"center"}); else toast("位置不明：一意に照合できません"); }, !target);
+  button("確認した", function(){
+    touchComment(c.id); c.reviewedRev = c.resolvedRev; c.reviewedAt = nowISO(); save(); renderDonePanel();
+  }, c.status !== "done" || c.reviewedRev === c.resolvedRev);
+  button("未済みへ戻す", function(){
+    touchComment(c.id); c.status = "open"; delete c.reviewedRev; delete c.reviewedAt; save(); render();
+    document.getElementById("rvdonepanel").style.display = "block"; renderDonePanel();
+  }, c.status !== "done");
+}
+
+function positionDonePanel(){
+  var panel = document.getElementById("rvdonepanel"), bar = document.getElementById("rvbar");
+  if(!panel || !bar) return;
+  var top = bar.getBoundingClientRect().top;
+  panel.style.bottom = Math.max(20, window.innerHeight - top + 8) + "px";
+  panel.style.maxHeight = Math.max(40, Math.min(560, top - 20)) + "px";
+}
 function renderDonePanel(){
+  positionDonePanel();
   var list = document.getElementById("rvdonelist");
   if(!list) return;
   list.innerHTML = "";
+  renderRevisionReview(list);
   var done = doneComments();
   if(!done.length){
     var empty = document.createElement("div");
@@ -996,6 +1127,7 @@ function copyText(){
   out += "\n番号（「1.」「2.」…）は表示順で毎回変わる。ids配列には番号でなくidを入れること";
   out += "\n対応しなかったコメントのidをidsに含めないこと";
   out += "\nrv-layer.js の読み込み行を削除しないこと";
+  if(STABLE_DOC) out += "\ndata-rv-doc-id の値は、同じ文書の改訂ではファイル名を変えても維持すること";
   if(window.__rvResolved || store.appliedRevs.length > 0){
     out += "\n既存の __rvResolved がある場合は、古いタグを消して1つにまとめ、" +
            "idsは前回分と今回分の和集合、revは今回の新しい値にすること。" +
@@ -1120,6 +1252,7 @@ function reviewText(imageResult, open, sourceInfo){
       "読み手が実際に見ていた表示中のページを採用した。サーバー側は別の内容を返している）" :
       "DOMシリアライズ（表示中のページから復元。属性順序等に軽微な整形差が出ることがある）") + "\n\n";
   out += "## AIへの対応手順\n\n";
+  out += "rv-layer.js の読み込み行を維持すること。data-rv-doc-id がある場合、同じ文書の改訂ではその値を変えないこと。\n\n";
   out += "対応が済んだら、source/" + sourceInfo.filename + " の改訂版の </body> 直前に\n\n";
   out += "<script>window.__rvResolved={rev:\"r{YYYYMMDDHHMMSS}\",ids:[\"対応したid\",...]}</script>\n\n";
   out += "を埋め込むこと（revは毎回ユニークに。注釈レイヤーが次回表示時に自動で済みへ落とす）。\n\n";
@@ -1303,6 +1436,174 @@ window.__rv = {
   get memoryOnly(){ return memoryOnly; },
   copyText: copyText
 };
+
+// ---------- レビューの持ち出し（AI用zipとは別の、原寸を含む全状態） ----------
+var PORTABLE_LIMIT = 50 * 1024 * 1024; // JSON file bytes (base64 included)
+var portabilityBusy = false;
+function portableError(message){ throw new Error(message); }
+function portableObject(o){ return !!o && typeof o === "object" && !Array.isArray(o); }
+function portableString(o, key, required){
+  if(required || o[key] != null){ if(typeof o[key] !== "string") portableError(key + " の型が不正です"); }
+}
+function validatePortable(p){
+  if(!portableObject(p) || p.format !== "akaire-review" || p.schema !== 1) portableError("未対応の持ち出し形式です");
+  if(!portableObject(p.source) || !portableObject(p.store) || !Array.isArray(p.images)) portableError("ファイル構造が不正です");
+  portableString(p.source,"path",true); portableString(p.source,"docId",true);
+  if(p.source.docId && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(p.source.docId)) portableError("文書IDが不正です");
+  var s = p.store, ids = Object.create(null), names = Object.create(null), refs = Object.create(null);
+  if(!Array.isArray(s.comments) || !Array.isArray(s.appliedRevs)) portableError("コメントまたはrevが不正です");
+  portableString(s,"docId",true); portableString(s,"title",true); portableString(s,"updated",false);
+  s.appliedRevs.forEach(function(r){ if(typeof r !== "string" || !r || ids[r]) portableError("revが不正または重複しています"); ids[r] = true; });
+  ids = Object.create(null);
+  s.comments.forEach(function(c){
+    if(!portableObject(c) || typeof c.id !== "string" || !c.id || ids[c.id]) portableError("コメントIDが不正または重複しています");
+    ids[c.id] = true;
+    ["quote","note"].forEach(function(k){ portableString(c,k,true); });
+    ["heading","before","after","path","tag","cls","fp","inner","created","resolvedRev","resolvedAt","reviewedRev","reviewedAt"].forEach(function(k){ portableString(c,k,false); });
+    if(c.status !== "open" && c.status !== "done") portableError("コメント状態が不正です");
+    if(c.kind != null && c.kind !== "block" && c.kind !== "crop") portableError("コメント種別が不正です");
+    if((c.kind === "block" || c.kind === "crop" || c.tag != null) &&
+       (typeof c.tag !== "string" || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(c.tag))) portableError("枠のタグ名が不正です");
+    if(c.kind === "block" || c.kind === "crop"){
+      if(typeof c.path !== "string" || !/^(?:[1-9][0-9]*(?:>[1-9][0-9]*)*)?$/.test(c.path)) portableError("枠のパスが不正です");
+    }
+    if(c.pos != null && (typeof c.pos !== "number" || !isFinite(c.pos))) portableError("位置が不正です");
+    if(c.anchor != null){
+      if(!portableObject(c.anchor)) portableError("アンカーが不正です");
+      ["tail","attrs","parent","before","after"].forEach(function(k){ portableString(c.anchor,k,false); });
+      ["ratio","ord"].forEach(function(k){ if(c.anchor[k] != null && (typeof c.anchor[k] !== "number" || !isFinite(c.anchor[k]))) portableError("アンカー位置が不正です"); });
+    }
+    if(c.kind === "crop" || c.rect != null){
+      if(!portableObject(c.rect)) portableError("切り取り座標が不正です");
+      ["x","y","w","h"].forEach(function(k){ if(typeof c.rect[k] !== "number" || !isFinite(c.rect[k])) portableError("切り取り座標が不正です"); });
+      if(c.rect.w <= 0 || c.rect.h <= 0) portableError("切り取り寸法が不正です");
+    }
+    if(c.replies != null && !Array.isArray(c.replies)) portableError("追記が不正です");
+    var replyIds = Object.create(null);
+    (c.replies || []).forEach(function(r){
+      if(!portableObject(r)) portableError("追記が不正です");
+      portableString(r,"text",true); portableString(r,"created",false); portableString(r,"id",false);
+      if(r.id && replyIds[r.id]) portableError("追記IDが重複しています");
+      if(r.id) replyIds[r.id] = true;
+    });
+    if(!Array.isArray(c.images)) portableError("画像参照が不正です");
+    c.images.forEach(function(im){
+      if(!portableObject(im) || typeof im.name !== "string" || !im.name) portableError("画像名が不正です");
+      portableString(im,"thumb",false); refs[im.name] = true;
+    });
+  });
+  p.images.forEach(function(im){
+    if(!portableObject(im) || typeof im.name !== "string" || !im.name || names[im.name] || !refs[im.name]) portableError("画像名が不正・重複・未参照です");
+    if(typeof im.data !== "string" || !/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/]*={0,2}$/i.test(im.data)) portableError("原寸画像が不正です");
+    var blob = dataURIToBlob(im.data);
+    if(!blob || !blob.size) portableError("原寸画像を読み取れません");
+    names[im.name] = true;
+  });
+  Object.keys(refs).forEach(function(n){ if(!names[n]) portableError("原寸画像が不足しています"); });
+  return p;
+}
+function portableData(blob){
+  return new Promise(function(resolve,reject){
+    var r = new FileReader(); r.onload = function(){ resolve(r.result); };
+    r.onerror = function(){ reject(new Error("原寸画像を読めません")); }; r.readAsDataURL(blob);
+  });
+}
+function portableSnapshot(){
+  if(noOverwrite || quarantined.length) return Promise.reject(new Error("読めない保存データがあります。持ち出しを中止しました"));
+  mergeWithStored();
+  if(quarantined.length) return Promise.reject(new Error("読めないコメントがあります。持ち出しを中止しました"));
+  var p = {format:"akaire-review",schema:1,source:{path:PATH_DOC,docId:STABLE_DOC},store:JSON.parse(JSON.stringify(store)),images:[]};
+  // Migration ownership belongs to this browser origin, not to the portable review.
+  delete p.store.migratedFromPath;
+  var names = Object.create(null), chain = imageWriteTail, total = 0;
+  p.store.comments.forEach(function(c){ (c.images || []).forEach(function(im){ names[im.name] = true; }); });
+  Object.keys(names).forEach(function(name){
+    chain = chain.then(function(){ return getImage(name); }).then(function(blob){
+      if(!blob) portableError("原寸画像がありません: " + name + "。持ち出しを中止しました");
+      total += blob.size; if(total > PORTABLE_LIMIT * 0.74) portableError("持ち出しは50 MiBまでです");
+      return portableData(blob);
+    }).then(function(data){ p.images.push({name:name,data:data}); });
+  });
+  return chain.then(function(){
+    validatePortable(p);
+    var blob = new Blob([JSON.stringify(p)],{type:"application/json"});
+    if(blob.size > PORTABLE_LIMIT) portableError("持ち出しは50 MiBまでです");
+    return blob;
+  });
+}
+function portableRestore(file){
+  var savedNames = [], beforeRaw, beforeMemory, candidate, committed = false;
+  if(!file || file.size > PORTABLE_LIMIT) return Promise.reject(new Error("読み込めるファイルは50 MiBまでです"));
+  if(noOverwrite || quarantined.length || hasUnsavedDraft()) return Promise.reject(new Error("読めない保存データまたは編集中の内容があります。先に確認してください"));
+  return new Promise(function(resolve,reject){
+    var r = new FileReader(); r.onload = function(){ resolve(r.result); }; r.onerror = function(){ reject(new Error("ファイルを読めません")); }; r.readAsText(file);
+  }).then(function(text){
+    var p = validatePortable(JSON.parse(text));
+    if(STABLE_DOC && p.source.docId && STABLE_DOC !== p.source.docId) portableError("文書IDが異なります。対応するHTMLを開いてください");
+    beforeRaw = localStorage.getItem(KEY); beforeMemory = JSON.stringify(store);
+    var disk = beforeRaw ? JSON.parse(beforeRaw) : null;
+    if(store.comments.length || (disk && (!Array.isArray(disk.comments) || disk.comments.length)) || store.portableImport || (disk && disk.portableImport)) portableError("保存先にレビューが既にあります。上書き・併合はしません。空の保存先を使ってください");
+    if(!confirm("このレビューを現在のページへ読み込みます。\n元: " + p.source.path + "\n対象: " + PATH_DOC + (STABLE_DOC ? "\n文書ID: " + STABLE_DOC : "\n現在のパスに保存します。") + "\n続けますか？")) portableError("読み込みを取り消しました");
+    candidate = p.store; candidate.docId = DOC; candidate.portableImport = true;
+    // Never import another origin's ownership; keep only this destination's provenance.
+    delete candidate.migratedFromPath;
+    if(disk && typeof disk.migratedFromPath === "string") candidate.migratedFromPath = disk.migratedFromPath;
+    // Apply the current HTML against the imported revision history, never the empty destination's history.
+    var resolved = window.__rvResolved;
+    if(resolved && resolved.rev && Array.isArray(resolved.ids) && candidate.appliedRevs.indexOf(resolved.rev) === -1){
+      candidate.comments.forEach(function(c){ if(c.status === "open" && resolved.ids.indexOf(c.id) !== -1){ c.status = "done"; c.resolvedRev = resolved.rev; c.resolvedAt = nowISO(); delete c.reviewedRev; delete c.reviewedAt; } });
+      candidate.appliedRevs.push(resolved.rev);
+    }
+    return openImageDB().then(function(db){
+      if(!db) portableError("IndexedDBが使えないため復元できません。原寸を保持できる環境を使ってください");
+      var chain = Promise.resolve(), rename = Object.create(null);
+      p.images.forEach(function(im){
+        chain = chain.then(function(){
+          var name = "rv-import-" + newCommentId() + "." + imageExt(dataURIToBlob(im.data).type,im.name);
+          rename[im.name] = name;
+          return getImage(name).then(function(existing){
+            if(existing) portableError("画像名が衝突しました。再度読み込んでください");
+            savedNames.push(name);
+            return putImage(name,dataURIToBlob(im.data));
+          }).then(function(ok){ if(ok !== true) portableError("原寸画像を保存できませんでした"); });
+        });
+      });
+      return chain.then(function(){ candidate.comments.forEach(function(c){ c.images.forEach(function(im){ im.name = rename[im.name]; }); }); });
+    });
+  }).then(function(){
+    // Recheck after asynchronous IDB writes: concurrent edits must not be overwritten.
+    if(localStorage.getItem(KEY) !== beforeRaw || JSON.stringify(store) !== beforeMemory || hasUnsavedDraft()) portableError("読み込み中にレビューが変わりました。再度確認してください");
+    var raw = JSON.stringify(candidate);
+    localStorage.setItem(KEY,raw);
+    committed = true;
+    store = candidate; memoryOnly = false; seenIds = {}; seenReplyKeys = {}; touchedIds = {};
+    store.comments.forEach(function(c){ seenIds[c.id] = true; (c.replies || []).forEach(markReplySeen); });
+    render(); return true;
+  }).catch(function(e){
+    if(committed) throw e;
+    return deleteImages(savedNames).then(function(ok){
+      if(!ok) console.warn("[rv] 復元失敗後の未参照画像の削除にも失敗しました");
+      throw e;
+    });
+  });
+}
+function buildPortabilityUI(bar){
+  var out = document.createElement("button"), into = document.createElement("button"), input = document.createElement("input");
+  out.id = "rvportable"; out.textContent = "持ち出す"; out.className = "ghost";
+  out.title = "済み・追記・原寸画像を含む全レビューを1ファイルで保存（50 MiBまで）";
+  into.id = "rvimport"; into.textContent = "読み込む"; into.className = "ghost";
+  into.title = "持ち出したレビューを空の保存先へ復元（50 MiBまで・上書き不可）";
+  input.id = "rvimportfile"; input.type = "file"; input.accept = ".json,application/json"; input.style.display = "none";
+  bar.appendChild(out); bar.appendChild(into); bar.appendChild(input);
+  function run(work, message){
+    if(portabilityBusy) return;
+    portabilityBusy = true; out.disabled = into.disabled = true;
+    Promise.resolve().then(work).then(function(){ toast(message); },function(e){ toast(e.message || "レビューを移せませんでした"); }).then(function(){ portabilityBusy = false; out.disabled = into.disabled = false; });
+  }
+  out.onclick = function(){ run(function(){ return portableSnapshot().then(function(blob){ downloadBlob(blob,"rv-" + docSlug() + "-review.json"); }); },"全レビューを持ち出しました"); };
+  into.onclick = function(){ if(!portabilityBusy) input.click(); };
+  input.onchange = function(){ var file = input.files[0]; input.value = ""; if(file) run(function(){ return portableRestore(file); },"レビューを読み込みました"); };
+}
 
 // ---------- 画像添付 ----------
 function warnImageDB(e){
@@ -2528,7 +2829,7 @@ function refreshLayoutObserver(){
     if(el && el !== ROOT) layoutObserver.observe(el);
   });
 }
-function onResize(){ scheduleLayout(); }
+function onResize(){ scheduleLayout(); positionDonePanel(); }
 
 // URLの指示を読んで切り替える。切り替わったら true
 // #rv / #rv-off のほか ?rv=1 / ?rv=0 も受ける（ハッシュはツール経由で落ちることがある）

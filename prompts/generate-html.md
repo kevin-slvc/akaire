@@ -49,6 +49,7 @@ rv-layer.js を置くなら "rv-layer.js"、1階層上に置くなら "../rv-lay
   レビュー層は起動を中止し、画面にバナーで警告を出す）:
 
   rvorphan, rvbar, rvcount, rvdone, rvcopy, rvexport, rvpick, rvclear,
+  rvportable, rvimport, rvimportfile,
   rvpop, rvquote, rvimgs, rvnote, rvdel, rvcancel, rvsave, rvdir, rvthread,
   rvdonepanel, rvdonelist, rvmarks, rvsel, rvcrop, rvhover, rvtoast,
   rvguide, rvguidetxt, rvguidestep, rvguidenext, rvguideskip
@@ -86,3 +87,11 @@ rv-layer.js を置くなら "rv-layer.js"、1階層上に置くなら "../rv-lay
 `templates/digital-agency.html` は上記を満たした状態で `</body>` 直前に読み込み行が
 すでに入っている自己完結HTMLの雛形。ここから作り始めれば script 1行のルールを
 忘れる心配がない。
+
+## 文書IDを固定してレビューを持ち越す
+
+ファイル名が変わる改訂では、読み込みscriptに `data-rv-doc-id="proposal-unique-id"` を付け、
+同じ文書の改訂でその値を維持する。別文書には別IDを発行する。使用文字は英数字・`.`・`_`・`-`、
+先頭は英数字、1〜128文字。同じオリジン・同じIDはレビューを共有する。属性省略時は従来のパス別保存。
+別ブラウザ・別オリジンでは「持ち出す」で保存したJSONを、対象HTMLの「読み込む」から復元する。
+HTML本体はJSONに含まれないため別途渡す。全状態の移行仕様は [portability.md](../specs/portability.md)。

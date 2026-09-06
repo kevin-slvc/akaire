@@ -16,17 +16,55 @@ HTML側がやることは `</body>` 直前に `<script src>` を1行足すだけ
 
 ![レビュー層が載ったページ。本文に下線と番号が付き、選択した箇所にコメント入力欄が開いている](docs/screenshot.png)
 
-**動画で見る**（どちらも音声なし・字幕は焼き付けていない。下の srt / vtt を当てて見る）:
+- [まず試す](#まず試す)
+- [自分のHTMLに入れる](#自分のhtmlに入れる)
+
+## まず試す
+
+GitHubの〈Code〉→〈Download ZIP〉で取得し、ZIPを展開する（clone済みならそのフォルダを使う）。
+練習用の [`examples/sample-review.html`](examples/sample-review.html) を
+Finderなどからブラウザで開く。macOSならリポジトリのルートで次を実行してもよい。
+
+```sh
+open examples/sample-review.html
+```
+
+このサンプルは最初から Akaire が表示され、わざと3つの欠陥が入っている。レビュー層が
+出ないときは、URL末尾に `#rv` を付けて開く。
+
+1. 本文の気になる文字をドラッグし、コメントを書いて保存する
+2. 右下の〈コピー〉を押し、コピーされた赤入れを Claude Code、Codex、Cursor などのAIへ貼る
+3. AIに「この赤入れに沿って `examples/sample-review.html` を修正して」と頼む。1件だけ入れた場合は、その1件だけを直して済み印を入れる
+4. 修正後に同じファイルを再読み込みする。対応した指摘が「済み」へ移り、本文の印が消えれば一往復完了
+
+表や図を含む3種類の赤入れまで試す手順と、AIが返す「済み」印の仕様は
+[`prompts/onboarding.md`](prompts/onboarding.md) にある。AI向けの初回案内も同じ手順を参照。
+サンプルはブラウザで直接開ける。
+
+## 自分のHTMLに入れる
+
+`rv-layer.js` をHTMLから辿れる場所に置き、`</body>` 直前に1行足す。
+
+```html
+<script src="rv-layer.js"></script>
+</body>
+```
+
+HTMLを開き、URL末尾に `#rv` を付けるとレビュー層が出る。赤入れが終わったら〈コピー〉を押して
+AIへ貼り、修正後のHTMLを再読み込みする。AIへ渡す指示文は
+[`prompts/apply-review.md`](prompts/apply-review.md)、HTML生成時の指示は
+[`prompts/generate-html.md`](prompts/generate-html.md) を使える。相対パスや表示条件の詳細は
+下の「導入」「使い方」にある。
+
+**動画で見る**（どちらも音声なし。字幕ファイルを対応するプレイヤーで読み込んで見る）:
 
 - [docs/demo.mp4](docs/demo.mp4) — 71秒。選ぶ→書く→枠→Option+ドラッグで範囲→コピー→済みへ落ちる、まで
 - [docs/demo-full.mp4](docs/demo-full.mp4) — 2分39秒。上に加えて、画像添付・枠の粒度（↑↓）・追記と書き直し・
   書きかけの保護・zip・済み一覧と戻す・位置を見失ったコメント・消去まで全部
 
 字幕ファイルは [demo.srt](docs/demo.srt) / [demo.vtt](docs/demo.vtt) と
-[demo-full.srt](docs/demo-full.srt) / [demo-full.vtt](docs/demo-full.vtt)。撮り直すときは
-[tools/record-demo.mjs](tools/record-demo.mjs)（引数に `full` を付けると全機能版）を走らせると、
-動画と字幕の両方が出る。`RV_BURN_CAP=1` を付けたときだけ、字幕が映像上部の帯へ焼き付く。
-先頭の画像を撮り直すのは [tools/shoot-screenshot.mjs](tools/shoot-screenshot.mjs)。
+[demo-full.srt](docs/demo-full.srt) / [demo-full.vtt](docs/demo-full.vtt)。動画・字幕・先頭画像を
+撮り直す手順は [`docs/demo-production.md`](docs/demo-production.md) に分けてある。
 
 ## これは何をするものか
 
@@ -38,23 +76,6 @@ HTML側がやることは `</body>` 直前に `<script src>` を1行足すだけ
 4. AIが修正し、対応したコメントのIDを `window.__rvResolved` として改訂版HTMLへ埋め込む
 5. 次に開いたとき、対応済みのコメントは自動で「済み」へ落ちる（表示だけ消えるのではなく、
    状態として記録される。「戻す」で再オープンもできる）
-
-## 初めて使うとき（AIエージェント向け）
-
-このリポジトリを読み込んだAI（Claude Code / Codex / Cursor など）へ。
-**相手が akaire を初めて使うなら、本番のHTMLを作る前にサンプルで1周だけ回させること。**
-手順は [`prompts/onboarding.md`](prompts/onboarding.md)。
-**聞くのは一度だけ。** 済んだか飛ばしたかは akaire のルートの
-`.akaire-onboarded` に残るので、次の会話では何も聞かずに本番へ進む。
-もう一度練習したくなったら、このファイルを消せばよい。
-
-`<script>` を1行足せば層は載るが、載ったことと読み手が使えることは別で、
-ブラウザ上の操作はあなたからは見えない。1周させないまま渡した生成物は、
-コメントが1件も来ないまま終わる。所要は5分。
-
-練習台は [`examples/sample-review.html`](examples/sample-review.html)。
-架空の社内メモに欠陥が3つ仕込んであり、文字・枠・切り取りの3つの指定方法が
-ちょうど1回ずつ要る作りにしてある。
 
 ## 導入
 
@@ -179,6 +200,27 @@ node tools/rv-cli.mjs strip  <file.html>    # 層ごと外す（元は .rvbak �
 このzipをAIへ渡すときの指示文の雛形は [`prompts/apply-review.md`](prompts/apply-review.md)
 にある。
 
+### 別のファイル名・ブラウザへレビューを持ち越す
+
+バーの〈持ち出す〉で、未済み・済みのコメント、追記、添付画像を1つのレビューJSONへ保存する。
+別のブラウザでは対象HTMLを開き、〈読み込む〉でそのファイルを選ぶ。表示されたページ名を
+確認して読み込むと、指摘と済み状態を引き継げる。HTML本体と `rv-layer.js` は別に渡す。
+
+既存コメントがあるページへの上書きは行わない。原寸画像を取得・保存できない場合も完了扱いに
+せず、理由を表示する。持ち出しファイルの上限は50 MiB。AIへ未済みの指摘を渡す〈zip〉と
+〈コピー〉は従来どおり使える。詳しい制約は [`specs/portability.md`](specs/portability.md) を参照。
+
+同じブラウザ・同じオリジンで、改訂版のファイル名を変えても自動で引き継ぎたい場合は、
+元のHTMLと改訂版で同じ文書IDを指定する。
+
+```html
+<script src="rv-layer.js" data-rv-doc-id="proposal-20260906"></script>
+```
+
+文書IDは英数字で始まる128文字以内の英数字・`.`・`_`・`-`。同じ文書の改訂では維持し、
+別文書を作るときは別IDにする。既存HTMLへ初めてIDを足すと、そのパスに保存済みのレビューを
+移行する。IDを付けないHTMLは従来どおりパス別に保存する。
+
 ### 済み消し込み
 
 AI側が対応を終えたら、改訂版HTMLの `</body>` 直前に次を埋め込む。
@@ -195,6 +237,18 @@ AI側が対応を終えたら、改訂版HTMLの `</body>` 直前に次を埋め
 ことと、古いタグを消して1個へ統合する必要があることをトーストで警告する。処理自体は止めず、
 最後のタグを従来どおり使う。名前が文字列として出てくるだけのscriptや `src` 付きのscriptは
 数えない（`rv-layer.js` をインラインへ展開しても誤警告にならない）。
+
+### 今回のAI修正を確認する
+
+改訂版を開いたら、〈済み〉の一覧にある「今回のAI対応を確認」で、今回対応した指摘を
+1件ずつ読む。修正前の引用と指摘・追記を見ながら〈前〉〈次〉で移り、内容がよければ
+〈確認した〉、まだ直っていなければ〈未済みへ戻す〉を選ぶ。
+
+元の引用から場所を一意に特定できる場合は、その箇所へ移動できる。引用が書き換わっている
+場合などは「位置不明」と表示するので、修正後の本文を確認する。「済み」はAIが対応した状態、
+「確認済み」は読み手が確認した状態として別に記録する。確認せず閉じても指摘は消えない。
+
+![AIが修正した本文の横で、修正前の引用と指摘を確認し、未済みへ戻せる画面](docs/revision-review.png)
 
 ## 生成側への指示
 
@@ -232,13 +286,16 @@ npx playwright install chromium
 npm test
 ```
 
-テストは4つに分けて個別にも走らせられる。
+テストは次のように個別にも走らせられる。
 
 ```
 npm run test:static    # ブラウザ不要。ファイル同士の食い違いを突き合わせる
 npm run test:browser   # サンプルを実ブラウザで開き、往復を1周させる（playwright が要る）
 npm run test:images    # 画像の添付と取り外しがIndexedDBの実体まで一致するか（同上）
 npm run test:environment # body transformの座標とIndexedDB拒否時のデータ保護（同上）
+npm run test:portability # レビューの持ち出し・読み込みと保存失敗時の保護
+npm run test:revision-review # 今回のAI修正の確認と未済みへの戻し
+npm run test:mvp       # 赤入れ→AI修正確認→別ブラウザへ持ち越す一往復
 ```
 
 `npm run test:static` はNode.jsの組み込み機能だけを使うため、`npm install` 前でも走る。
@@ -314,7 +371,7 @@ red-1000 を使い、機械が出す警告は橙へ逃がしている。
 - コメント保存: `localStorage`（テキスト）、`IndexedDB`（画像原寸）
 - `Promise` は読み込み時に評価するため、無い環境では層全体が起動しない。他の必須APIが
   無い場合も初期化中または操作中に停止し、コメントだけが動くフォールバックにはならない
-- コメントの保存先を分ける文書識別子は `location.pathname` だけで、クエリとハッシュは
+- `data-rv-doc-id` 未指定時は、コメントの保存先を分ける文書識別子に `location.pathname` を使い、クエリとハッシュは
   含めない。同じパスの `/preview?id=a` と `/preview?id=b` はコメントを共有する。クエリと
   ハッシュには層自身の `?rv=1` / `#rv` も同居し、含めると有効化のたびに別のコメント集合へ
   分かれるため、パスだけに固定している
