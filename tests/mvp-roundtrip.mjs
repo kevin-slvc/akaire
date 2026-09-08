@@ -54,6 +54,7 @@ try {
   const id = await first.evaluate(() => window.__rv.store.comments[0].id);
   assert.ok((await first.evaluate(() => window.__rv.copyText())).includes(id));
   resolved = { rev: 'mvp-roundtrip-1', ids: [id] };
+  await first.evaluate(() => window.__rv.imagesSettled());   // 原寸の IndexedDB 書き込みが終わる前に reload しない
   await first.reload();
   await first.locator('#rvdone').click();
   await first.getByRole('button', { name: '確認した', exact: true }).click();

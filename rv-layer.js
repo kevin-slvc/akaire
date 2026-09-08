@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.32
+ * レビュー注釈レイヤー v1.33
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -71,7 +71,7 @@ var dictItems = readDict();
 var dictControl = false;
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.32";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.33";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -91,6 +91,7 @@ var popImgsPending = 0;   // 読み込み中の画像枚数（上限判定に予
 var MAXIMG = 4;           // 1コメントあたりの画像枚数の上限
 var imageDBPromise = null; // IndexedDB接続（使えなければ null を解決する）
 var imageWriteTail = Promise.resolve(); // 原寸の保存・削除を順番に完了させる
+var imagePendingOps = 0;                 // 進行中の原寸の保存・削除の件数（beforeunload の判定に使う）
 var imageDBWarned = false;
 var picking = false;      // 枠を選んでいる最中か
 var pickBase = null;      // カーソル直下の要素
@@ -1450,7 +1451,12 @@ window.__rv = {
   guide: function(){ try{ localStorage.removeItem(GUIDE_KEY); }catch(e){} guideStart(); },
   get store(){ return store; },
   get memoryOnly(){ return memoryOnly; },
-  copyText: copyText
+  copyText: copyText,
+  // 原寸画像の保存・削除が全部終わるまで待つ。保存の直後にページを再読み込みすると
+  // IndexedDB への書き込みが打ち切られ、後の持ち出しが「原寸画像がありません」で止まる
+  // （tests/mvp-roundtrip.mjs が単独実行でも3回に2回落ちていた原因、v1.33）。
+  // テストと自動化のための入口で、普段の操作には要らない
+  imagesSettled: function(){ return imageWriteTail.then(function(){}, function(){}); }
 };
 
 // ---------- レビューの持ち出し（AI用zipとは別の、原寸を含む全状態） ----------
@@ -1652,8 +1658,10 @@ function openImageDB(){
   return imageDBPromise;
 }
 function queueImageOp(work){
-  imageWriteTail = imageWriteTail.then(work, work).then(function(v){ return v; }, function(e){
-    warnImageDB(e); return false;
+  imagePendingOps++;
+  var done = function(){ imagePendingOps = Math.max(0, imagePendingOps - 1); };
+  imageWriteTail = imageWriteTail.then(work, work).then(function(v){ done(); return v; }, function(e){
+    done(); warnImageDB(e); return false;
   });
   return imageWriteTail;
 }
@@ -2887,8 +2895,10 @@ function bindEvents(){
   // 書きかけのまま別のページへ移ると、コメントは保存前なので消える。
   // 対象ページ本文のリンクを踏んだときが一番起きやすい。
   // 書きかけがあるときだけブラウザの確認を出す（無いときは何も足さない）。
+  // 原寸画像の書き込み中（保存直後の数十ms〜大きい画像で数百ms）も同じ扱い。ここで離れると
+  // 原寸だけが落ち、コメントは残るので、後で持ち出すときまで気づけない（v1.33）
   window.addEventListener("beforeunload", function(e){
-    if(!hasUnsavedDraft()) return;
+    if(!hasUnsavedDraft() && !imagePendingOps) return;
     e.preventDefault();
     e.returnValue = "";
     return "";
