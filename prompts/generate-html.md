@@ -50,7 +50,7 @@ rv-layer.js を置くなら "rv-layer.js"、1階層上に置くなら "../rv-lay
 
   rvorphan, rvbar, rvcount, rvdone, rvcopy, rvexport, rvpick, rvclear,
   rvportable, rvimport, rvimportfile,
-  rvpop, rvquote, rvimgs, rvnote, rvdel, rvcancel, rvsave, rvdir, rvthread,
+  rvdict, rvdictadd, rvpop, rvquote, rvimgs, rvnote, rvdel, rvcancel, rvsave, rvdir, rvthread,
   rvdonepanel, rvdonelist, rvmarks, rvsel, rvcrop, rvhover, rvtoast,
   rvguide, rvguidetxt, rvguidestep, rvguidenext, rvguideskip
 

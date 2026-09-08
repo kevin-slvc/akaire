@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.31
+ * レビュー注釈レイヤー v1.32
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -66,9 +66,12 @@ var ENABLE_KEY = "rv-layer:enabled";
 // どのページのものか判別できない。最初に取り込んだページを記録し、他のパスでは
 // 二度と読まない（読むと同じコメントが各ページへ複製され、別文書のものとして扱われる）。
 var GUIDE_KEY = "rv-layer:guide";                   // 初回ガイドを見終えたか（オリジン単位・ページ別ではない）
+var DICT_KEY = "rv-layer:dict";
+var dictItems = readDict();
+var dictControl = false;
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.31";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.32";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -182,6 +185,19 @@ var CSS = ""
 +"#rvpop .rvimgs button{position:absolute;top:-6px;right:-6px;width:18px;height:18px;"
 +"padding:0;border-radius:999px;font-size:11px;line-height:1;background:var(--rv-inverse,var(--surface-dark,#000000));color:#fff}"
 +"#rvpop .rvhint{font-size:11px;color:var(--rv-text-muted,var(--muted,#767676));margin:6px 0 0}"
++"#rvdict{display:flex;align-items:flex-start;gap:4px;padding-bottom:6px}"
++"#rvdict .rvdictscroll{flex:1;min-width:0;overflow-x:auto}"
++"#rvdict .rvdictscroll.rvmore{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)}"
++"#rvdict .rvdictgrid{display:grid;grid-template-columns:repeat(3,max-content);gap:6px 4px;width:max-content;padding:6px 5px 0}"
++"#rvdict .rvdictchip{position:relative;display:flex;white-space:nowrap}"
++"#rvpop #rvdict .rvdictinsert,#rvpop #rvdictadd{white-space:nowrap;padding:2px 5px;line-height:16px;font-size:11.5px}"
++"#rvpop #rvdictadd{flex:0 0 auto;margin-top:6px}"
++"#rvdict .rvdictremove{position:absolute;top:-6px;right:-5px;width:18px;height:18px;padding:0;border-radius:999px;font-size:11px;line-height:1;background:var(--rv-inverse,var(--surface-dark,#000000));color:#fff;visibility:hidden}"
++"#rvdict .rvdictchip:hover .rvdictremove,#rvdict .rvdictchip:focus-within .rvdictremove{visibility:visible}"
++"#rvdict .rvdictbadge{display:none;position:absolute;top:-6px;left:-5px;font-size:9px;line-height:13px;min-width:13px;text-align:center;border-radius:4px;background:var(--rv-inverse,#000);color:#fff;pointer-events:none}"
++"#rvdict.rvctrl .rvdictbadge{display:block}"
++"#rvdict .rvdictflash{outline:2px solid var(--rv-accent,#a90000);outline-offset:2px;border-radius:6px}"
++"@media(hover:none){#rvdict .rvdictremove{visibility:visible}}"
 +"#rvthread{margin:0 0 8px;font-size:12px;line-height:1.5;max-height:max(150px,calc(100vh - 340px));overflow:auto}"
 +"#rvthread .rvline{display:flex;gap:6px;align-items:flex-start;padding:4px 0;"
 +"border-bottom:1px solid var(--rv-border,var(--hairline,#cccccc))}"
@@ -244,7 +260,7 @@ function injectCSS(){
 
 // ---------- DOM 自己注入 ----------
 var RV_RESERVED_IDS = ["rvorphan","rvbar","rvcount","rvdone","rvcopy","rvexport","rvpick","rvclear",
-  "rvpop","rvquote","rvimgs","rvnote","rvdel","rvcancel","rvsave","rvdonepanel","rvdonelist","rvdir",
+  "rvdict","rvdictadd","rvpop","rvquote","rvimgs","rvnote","rvdel","rvcancel","rvsave","rvdonepanel","rvdonelist","rvdir",
   "rvthread","rvportable","rvimport","rvimportfile",
   "rvmarks","rvsel","rvcrop","rvhover","rvtoast",
   "rvguide","rvguidetxt","rvguidestep","rvguidenext","rvguideskip"];
@@ -335,7 +351,7 @@ function buildDOM(){
   row.appendChild(delBtn); row.appendChild(cancelBtn); row.appendChild(saveBtn);
   var hint = document.createElement("div"); hint.className = "rvhint";
   hint.textContent = "画像はここへペースト / ドロップ。そのままCmd+Cで本文をコピーできる";
-  popEl.appendChild(q); popEl.appendChild(thread); popEl.appendChild(imgs); popEl.appendChild(ta);
+  popEl.appendChild(q); popEl.appendChild(thread); popEl.appendChild(imgs); popEl.appendChild(buildDict()); popEl.appendChild(ta);
   popEl.appendChild(hint); popEl.appendChild(row);
   document.body.appendChild(popEl);
 
@@ -1774,6 +1790,100 @@ function collectExportImages(open){
 function docSlug(){
   return LEGACY_DOC.replace(/\.html?$/i, "").replace(/[^A-Za-z0-9\-_]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "page";
 }
+// ---------- 定型句（オリジン単位。持ち越しデータには含めない） ----------
+function cleanDict(items){
+  var out = [];
+  items.forEach(function(item){
+    if(typeof item !== "string") return;
+    var text = item.trim();
+    if(text && !/[\r\n]/.test(text) && text.length <= 20 && out.indexOf(text) < 0 && out.length < 6) out.push(text);
+  });
+  return out;
+}
+function readDict(){
+  try{
+    var raw = localStorage.getItem(DICT_KEY);
+    if(raw !== null){
+      var data = JSON.parse(raw);
+      if(data && data.v === 1 && Array.isArray(data.items)) return cleanDict(data.items);
+    }
+  }catch(e){}
+  return cleanDict(((SELF && SELF.getAttribute("data-rv-dict")) || "").split("|"));
+}
+function saveDict(){
+  try{ localStorage.setItem(DICT_KEY, JSON.stringify({v:1, items:dictItems})); }catch(e){}
+}
+function insertDict(index){
+  if(!dictItems[index]) return;
+  var ta = document.getElementById("rvnote");
+  ta.value += (ta.value ? "\n" : "") + dictItems[index];
+  ta.focus({preventScroll:true});
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+function updateDictLayout(){
+  var row = document.getElementById("rvdict");
+  if(!row || !row.offsetHeight) return;
+  var scroller = row.querySelector(".rvdictscroll");
+  scroller.classList.toggle("rvmore", scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 1);
+  document.getElementById("rvthread").style.maxHeight = "max(150px, calc(100vh - " + (340 + row.offsetHeight) + "px))";
+}
+function setDictControl(on){
+  dictControl = on;
+  var row = document.getElementById("rvdict");
+  if(row) row.classList.toggle("rvctrl", on);
+}
+function renderDict(){
+  var row = document.getElementById("rvdict");
+  var grid = row.querySelector(".rvdictgrid");
+  grid.innerHTML = "";
+  dictItems.forEach(function(text, index){
+    var chip = document.createElement("span"); chip.className = "rvdictchip";
+    var insert = document.createElement("button"); insert.className = "rvdictinsert ghost";
+    insert.textContent = text;
+    insert.onclick = function(){ insertDict(index); };
+    var badge = document.createElement("span"); badge.className = "rvdictbadge";
+    badge.textContent = String(index + 1); badge.setAttribute("aria-hidden", "true");
+    var remove = document.createElement("button"); remove.className = "rvdictremove";
+    remove.textContent = "×"; remove.setAttribute("aria-label", "「" + text + "」を辞書から外す");
+    remove.onclick = function(){
+      dictItems.splice(index, 1); saveDict(); renderDict();
+      toast("「" + text + "」を辞書から外しました");
+    };
+    chip.appendChild(insert); chip.appendChild(badge); chip.appendChild(remove); grid.appendChild(chip);
+  });
+  document.getElementById("rvdictadd").textContent = dictItems.length ? "＋" : "＋ 定型句";
+  updateDictLayout();
+}
+function buildDict(){
+  var row = document.createElement("div"); row.id = "rvdict";
+  var scroller = document.createElement("div"); scroller.className = "rvdictscroll";
+  var grid = document.createElement("div"); grid.className = "rvdictgrid";
+  scroller.appendChild(grid); scroller.addEventListener("scroll", updateDictLayout);
+  var add = document.createElement("button"); add.id = "rvdictadd";
+  add.setAttribute("aria-label", "入力欄の文を辞書に登録");
+  add.onclick = function(){
+    var text = document.getElementById("rvnote").value.trim();
+    if(!text){ toast("入力欄に書いてから＋を押すと辞書になる"); return; }
+    if(/[\r\n]/.test(text)){ toast("1行の文だけ辞書にできる"); return; }
+    if(text.length > 20){ toast("辞書は20文字まで"); return; }
+    var index = dictItems.indexOf(text);
+    if(index >= 0){
+      toast("もう辞書にあります");
+      var chip = grid.children[index];
+      chip.classList.add("rvdictflash");
+      scroller.scrollLeft = chip.offsetLeft - grid.offsetLeft;
+      setTimeout(function(){ chip.classList.remove("rvdictflash"); }, 600);
+      return;
+    }
+    if(dictItems.length >= 6){ toast("辞書は6件まで。使わないものを×で外して"); return; }
+    dictItems.push(text); saveDict(); renderDict();
+    toast("辞書に足しました（" + dictItems.length + "件）");
+  };
+  row.appendChild(scroller); row.appendChild(add);
+  window.addEventListener("resize", updateDictLayout);
+  return row;
+}
+
 function renderPopImgs(){
   var box = document.getElementById("rvimgs");
   if(!box) return;
@@ -2351,8 +2461,8 @@ function renderThread(){
   });
   scrollThreadToLatest();
 }
-// スレッド欄の高さは画面に合わせて伸びる（max(150px, 100vh - 340px)。340px は引用の帯・
-// 画像・入力欄・ボタンのぶん）。高さ932pxの画面なら本文8行＋追記5件がそのまま出る（v1.30）。
+// v1.30の画面に合わせた高さから、v1.32では辞書の実測高さ（余白込み）も引く。
+// max(150px, 100vh - 340px - 辞書の高さ)。340px は引用の帯・画像・入力欄・ボタンのぶん。
 // 低い画面では150pxまで縮み、本文が7〜8行あると追記の行がその下へ隠れる。macOSは
 // スクロールバーも出ないので、保存した追記が画面上は「保存されていない」と同じに見えた
 // （v1.28まで。実機の録画で確認）。溢れたときは最新の追記が見える位置まで送る
@@ -2373,6 +2483,8 @@ function openPop(x, y, quote, note, images){
   renderPopImgs();
   document.getElementById("rvdel").style.display = editing ? "" : "none";
   pop.style.display = "block";
+  renderDict();
+  setDictControl(dictControl);
   scrollThreadToLatest();   // 非表示のうちは scrollHeight が0で送れないので、表示してから
   var w = pop.offsetWidth, left = Math.min(Math.max(8, x - w/2), window.innerWidth - w - 8);
   pop.style.left = left + "px";
@@ -2718,7 +2830,10 @@ function bindEvents(){
     for(var i=0;i<fs.length;i++) addImage(fs[i]);
   });
 
+  document.addEventListener("keyup", function(e){ if(e.key === "Control") setDictControl(false); });
+  window.addEventListener("blur", function(){ setDictControl(false); });
   document.addEventListener("keydown", function(e){
+    if(e.key === "Control") setDictControl(true);
     // 選択直後はフォーカスを本文に残してある（Cmd+Cを効かせるため）。
     // 文字キーを押した時点でコメント欄へ移す。preventDefaultしないので、その1文字も入る
     var printable = (e.key.length === 1) || e.key === "Process" || e.keyCode === 229;
@@ -2734,6 +2849,12 @@ function bindEvents(){
       if(!pickBase) return;
       pickLevel = Math.max(0, pickLevel + (e.key === "ArrowUp" ? 1 : -1));
       showHover(levelUp(pickBase, pickLevel));
+      return;
+    }
+    if(e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.isComposing &&
+       /^[1-6]$/.test(e.key) && pop.style.display === "block" && dictItems[Number(e.key) - 1]){
+      e.preventDefault();
+      if(!e.repeat){ insertDict(Number(e.key) - 1); document.getElementById("rvsave").click(); }
       return;
     }
     if(e.key === "Escape" && picking){ exitPick(); return; }
