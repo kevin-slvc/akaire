@@ -299,7 +299,7 @@ AIに「レビュー層が載るHTMLを作らせる」ための指示文の雛�
 - [`examples/minimal.html`](examples/minimal.html): 最小の導入例
 - [`examples/resolved.html`](examples/resolved.html): 済み消し込みの見本
 - [`examples/sample-review.html`](examples/sample-review.html): レビューを1周する練習用サンプル（欠陥3つ入り。[`prompts/onboarding.md`](prompts/onboarding.md) から使う）
-- [`tests/fixtures/`](tests/fixtures/): 「黙って壊れる構造」の回帰確認用HTML5本
+- [`tests/fixtures/`](tests/fixtures/): 「黙って壊れる構造」の回帰確認用HTML7本
 - [`tests/manual-checklist.md`](tests/manual-checklist.md): 実機での確認手順
 
 clone直後は依存パッケージとPlaywright用のChromiumを入れてから、テストを走らせる。
@@ -315,6 +315,7 @@ npm test
 ```
 npm run test:static    # ブラウザ不要。ファイル同士の食い違いを突き合わせる
 npm run test:browser   # サンプルを実ブラウザで開き、往復を1周させる（playwright が要る）
+npm run test:dict      # 定型句の辞書の登録・保存・操作・配置（同上）
 npm run test:images    # 画像の添付と取り外しがIndexedDBの実体まで一致するか（同上）
 npm run test:environment # body transformの座標とIndexedDB拒否時のデータ保護（同上）
 npm run test:portability # レビューの持ち出し・読み込みと保存失敗時の保護
@@ -323,9 +324,12 @@ npm run test:mvp       # 赤入れ→AI修正確認→別ブラウザへ持ち�
 ```
 
 `npm run test:static` はNode.jsの組み込み機能だけを使うため、`npm install` 前でも走る。
+`main` への push と Pull Request では、同じ `npm test` が GitHub Actions
+（[`.github/workflows/test.yml`](.github/workflows/test.yml)）でも走る。
 
 静的チェックが見るのは「実際に一度やらかした型」だけ——ガイドのステップと進行の
-呼び出しの食い違い、版数4箇所のずれ、`rev` の案内が分止まりになっていないか、
+呼び出しの食い違い、版数4箇所のずれ、2周目の和集合指示に「戻す」分の除外が付いているか、
+`rev` の案内が分止まりになっていないか、
 予約IDが実装と生成側の雛形で揃っているか、同梱HTMLが読み込み行を持っているか。
 実走チェックは、層の表示・文字/枠/切り取りの3種・印上ドラッグ・コピー文のID・
 `__rvResolved` による済み落ちを通しで確かめる。環境回帰チェックは、transformされたbody上の
