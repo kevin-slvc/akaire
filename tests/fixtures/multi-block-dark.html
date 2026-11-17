@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>multi-block / dark fixture</title>
+<!-- v1.34: ブロックをまたぐ選択、ダークモードの入力欄、バーを畳む の回帰確認用 -->
+<style>
+:root { --canvas: #faf9f5; --ink: #141413; }
+@media (prefers-color-scheme: dark) { :root { --canvas: #1a1a18; --ink: #f0eee6; } }
+body { background: var(--canvas); color: var(--ink); font-family: sans-serif; max-width: 640px; margin: 40px auto; line-height: 1.8; }
+</style>
+</head>
+<body>
+<h1>見出し</h1>
+<p id="p1">一つ目の段落です。ここから選択を始めて、次の段落までまたいでみる。</p>
+<ul><li id="l1">リスト一行目の文字</li><li id="l2">リスト二行目の文字</li></ul>
+<p id="p2">二つ目の段落です。ここで選択を終える予定の文章。</p>
+<script src="../../rv-layer.js" data-rv-default="on"></script>
+</body>
+</html>

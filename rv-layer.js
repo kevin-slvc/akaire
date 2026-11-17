@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.33
+ * レビュー注釈レイヤー v1.34
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -71,7 +71,7 @@ var dictItems = readDict();
 var dictControl = false;
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.33";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.34";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -132,6 +132,13 @@ var CSS = ""
 +"#rvbar button.ghost:hover{color:var(--rv-on-inverse,#ffffff)}"
 +"#rvcount{margin-right:4px;letter-spacing:.02em;white-space:nowrap}"
 +"@media(max-width:700px){#rvbar{border-radius:18px}}"
+// 畳んだバー（v1.34）。本文の上に乗って邪魔なとき、件数だけの丸1つにする
++"#rvbar button#rvmin{padding:6px 10px;font-weight:700}"
++"#rvbar button#rvexpand{display:none}"
++"#rvbar.rvmin{padding:0;gap:0;background:transparent;box-shadow:none}"
++"#rvbar.rvmin>*{display:none!important}"
++"#rvbar.rvmin>button#rvexpand{display:inline-flex!important;align-items:center;justify-content:center;"
++"min-width:40px;height:40px;padding:0 12px;font-size:13px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.22)}"
 +"#rvpop{position:absolute;z-index:2147483640;width:290px;background:var(--rv-surface,var(--canvas,#ffffff));"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:10px;padding:12px;"
 +"box-shadow:0 8px 26px rgba(0,0,0,.18);display:none}"
@@ -142,7 +149,9 @@ var CSS = ""
 +"#rvpop.rvmoving *{user-select:none;cursor:move}"
 +"#rvpop textarea{width:100%;min-height:70px;font:inherit;font-size:13px;"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:6px;padding:8px;resize:vertical;"
-+"background:#fff;color:var(--rv-text,var(--ink,#1a1a1a))}"
+// 背景は枠（#rvpop）と同じ変数から取る。#fff固定にすると、ダークモードで --ink を
+// 明るい色へ切り替えるページでは白地に白い文字になって読めない（v1.34）
++"background:var(--rv-surface,var(--canvas,#ffffff));color:var(--rv-text,var(--ink,#1a1a1a))}"
 +"#rvpop textarea:focus{outline:2px solid var(--rv-accent,#a90000);outline-offset:1px;"
 +"border-color:var(--rv-accent,#a90000)}"
 +"#rvpop button:focus-visible,#rvbar button:focus-visible,"
@@ -309,6 +318,18 @@ function showCollisionBanner(names){
     document.body.style.paddingTop = prevPaddingTop;
   };
 }
+var BAR_MIN_KEY = "rv-layer:bar-min";
+function barMinSaved(){
+  try{ return localStorage.getItem(BAR_MIN_KEY) === "1"; }catch(e){ return false; }
+}
+function setBarMin(on){
+  var bar = document.getElementById("rvbar");
+  if(!bar) return;
+  bar.classList.toggle("rvmin", !!on);
+  try{ if(on) localStorage.setItem(BAR_MIN_KEY, "1"); else localStorage.removeItem(BAR_MIN_KEY); }catch(e){}
+  if(!on){ var m = document.getElementById("rvmin"); if(m) m.focus(); }
+  else { var x = document.getElementById("rvexpand"); if(x) x.focus(); }
+}
 function buildDOM(){
   // rvorphan: ROOTの先頭子として挿入
   var orphanBox = document.createElement("div");
@@ -336,6 +357,15 @@ function buildDOM(){
   dirBtn.textContent = "保存先";
   bar.appendChild(dirBtn);
   bar.appendChild(clearBtn);
+  // 畳む／戻す（v1.34）。状態はブラウザごとに覚える（ページをまたいで同じ）
+  var minBtn = document.createElement("button"); minBtn.id = "rvmin"; minBtn.className = "ghost";
+  minBtn.textContent = "−"; minBtn.title = "バーを畳む";
+  var expandBtn = document.createElement("button"); expandBtn.id = "rvexpand";
+  expandBtn.textContent = "0"; expandBtn.title = "レビューのバーを開く";
+  bar.appendChild(minBtn); bar.appendChild(expandBtn);
+  minBtn.onclick = function(){ setBarMin(true); };
+  expandBtn.onclick = function(){ setBarMin(false); };
+  if(barMinSaved()) bar.classList.add("rvmin");
   bar.title = "レビュー注釈レイヤー v" + RV_VERSION;
   document.body.appendChild(bar);
 
@@ -903,6 +933,40 @@ function blockOf(node, endNode){
   }
   return el || ROOT;
 }
+// ブロックをまたぐレンジを、含まれる文字ノードごとに <mark> で包む。番号は最後のかたまりに付ける。
+// ブロック同士の間にある改行・字下げだけのノードは包まない（<ul>の直下などに<mark>が出て崩れるため）
+function wrapAcross(r, id, num){
+  var root = r.commonAncestorContainer;
+  if(root.nodeType === 3) root = root.parentNode;
+  var segs = [], w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), n;
+  while((n = w.nextNode())){
+    if(!r.intersectsNode(n)) continue;
+    var skip = false;
+    for(var p = n.parentElement; p && p !== ROOT; p = p.parentElement){
+      if(SKIP[p.tagName] || (p.classList && p.classList.contains("rvnum"))){ skip = true; break; }
+    }
+    if(skip) continue;
+    var st = n === r.startContainer ? r.startOffset : 0;
+    var en = n === r.endContainer ? r.endOffset : n.nodeValue.length;
+    if(en <= st || !/\S/.test(n.nodeValue.slice(st, en))) continue;
+    segs.push({node:n, st:st, en:en});
+  }
+  if(!segs.length) return false;
+  var last = null;
+  for(var k=0;k<segs.length;k++){
+    var t = segs[k].node;
+    if(segs[k].en < t.nodeValue.length) t.splitText(segs[k].en);
+    if(segs[k].st > 0) t = t.splitText(segs[k].st);
+    var m = document.createElement("mark");
+    m.className = "rv"; m.dataset.id = id;
+    t.parentNode.insertBefore(m, t); m.appendChild(t);
+    last = m;
+  }
+  var s = document.createElement("span");
+  s.className = "rvnum"; s.textContent = String(num);
+  last.appendChild(s);
+  return true;
+}
 function clearMarks(){
   var ms = ROOT.querySelectorAll("mark.rv");
   // 同じ文字列への複数コメントはmarkが入れ子になる。内側から外すと番号を取り違えない。
@@ -938,10 +1002,11 @@ function render(){
     // <mark> はインライン要素なので、レンジがブロックの境界をまたいだまま
     // extractContents すると <mark> が <p> 等を内包し、元の段落が割れる。
     // 復元したレンジは保存時と同じとは限らないので、包む直前にもう一度確かめる。
+    // ブロックをまたぐレンジは、文字のかたまりごとに別々の <mark> で包む（v1.34）
     var sb = blockOf(r.startContainer);
     if(!sb.contains(r.endContainer)){
-      try{ r.setEnd(sb, sb.childNodes.length); }catch(e){ orphan.push(c); continue; }
-      if(r.collapsed){ orphan.push(c); continue; }
+      if(!wrapAcross(r, c.id, i+1)) orphan.push(c);
+      continue;
     }
     var m = document.createElement("mark");
     m.className = "rv"; m.dataset.id = c.id;
@@ -956,6 +1021,8 @@ function render(){
   if(orphan.length) countText += " / 未照合" + orphan.length;
   if(memoryOnly) countText += "（保存なし）";
   document.getElementById("rvcount").textContent = countText;
+  var exp = document.getElementById("rvexpand");
+  if(exp){ exp.textContent = String(open.length); exp.title = "レビューのバーを開く（" + countText + "）"; }
 
   var box = document.getElementById("rvorphan");
   if(box){
@@ -2623,12 +2690,8 @@ function bindEvents(){
     if(!hasSelection){ if(!editing) tryClose(); return; }
     var range = sel.getRangeAt(0);
     if(!ROOT.contains(range.commonAncestorContainer)) return;
-    // 通常のブロック越えは従来通り切る。flex/gridの別アイテム越えはコンテナまで許す。
-    var blk = blockOf(range.startContainer, range.endContainer);
-    if(!blk.contains(range.endContainer)){
-      range = range.cloneRange();
-      try{ range.setEnd(blk, blk.childNodes.length); }catch(e){}
-    }
+    // 段落・見出し・リストをまたぐ選択もそのまま受ける（v1.34。以前は最初のブロックの末尾で切っていた）。
+    // 印は render() がブロックごとに分けて付ける
     var selectedText = rangeText(range);
     var quote = selectedText.replace(/\s+/g, " ").trim();
     // 1文字だけの選択も受ける。空白だけの微小ドラッグは正規化で空文字になるのでここで落ちる

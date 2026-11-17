@@ -299,7 +299,7 @@ AIに「レビュー層が載るHTMLを作らせる」ための指示文の雛�
 - [`examples/minimal.html`](examples/minimal.html): 最小の導入例
 - [`examples/resolved.html`](examples/resolved.html): 済み消し込みの見本
 - [`examples/sample-review.html`](examples/sample-review.html): レビューを1周する練習用サンプル（欠陥3つ入り。[`prompts/onboarding.md`](prompts/onboarding.md) から使う）
-- [`tests/fixtures/`](tests/fixtures/): 「黙って壊れる構造」の回帰確認用HTML7本
+- [`tests/fixtures/`](tests/fixtures/): 「黙って壊れる構造」の回帰確認用HTML8本
 - [`tests/manual-checklist.md`](tests/manual-checklist.md): 実機での確認手順
 
 clone直後は依存パッケージとPlaywright用のChromiumを入れてから、テストを走らせる。
