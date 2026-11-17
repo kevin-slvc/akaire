@@ -26,6 +26,8 @@ async function open() {
   const b = await page.locator('table').first().boundingBox();
   await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
   await page.locator('#rvpop').waitFor({ state: 'visible' });
+  // 開く動き（v1.34）の最中にクリックすると、Playwrightが対象を画面へ入れようとしてページをスクロールする
+  await page.waitForFunction(() => !document.getElementById('rvpop').getAnimations().length);
 }
 async function reload() {
   await note.fill('');

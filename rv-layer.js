@@ -133,7 +133,13 @@ var CSS = ""
 +"#rvcount{margin-right:4px;letter-spacing:.02em;white-space:nowrap}"
 +"@media(max-width:700px){#rvbar{border-radius:18px}}"
 // 畳んだバー（v1.34）。本文の上に乗って邪魔なとき、件数だけの丸1つにする
-+"#rvbar button#rvmin{padding:6px 10px;font-weight:700}"
+// 「−」は操作ボタンの列から外し、バーの左上の角に乗せる。列の中だと隣の「消去」と押し間違える
++"#rvbar button#rvmin{position:absolute;top:-9px;left:-9px;width:22px;height:22px;padding:0;"
++"display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:14px;line-height:1;font-weight:700;"
++"background:var(--rv-inverse,var(--surface-dark,#000000));color:var(--rv-on-inverse,#ffffff);"
++"border:1.5px solid var(--rv-on-inverse-muted,#b3b3b3);box-shadow:0 2px 6px rgba(0,0,0,.25)}"
++"#rvbar button#rvmin:hover{background:var(--rv-accent,#a90000);border-color:var(--rv-accent,#a90000)}"
++"#rvbar{transform-origin:100% 100%}"
 +"#rvbar button#rvexpand{display:none}"
 +"#rvbar.rvmin{padding:0;gap:0;background:transparent;box-shadow:none}"
 +"#rvbar.rvmin>*{display:none!important}"
@@ -322,10 +328,49 @@ var BAR_MIN_KEY = "rv-layer:bar-min";
 function barMinSaved(){
   try{ return localStorage.getItem(BAR_MIN_KEY) === "1"; }catch(e){ return false; }
 }
+// ---------- 動き（v1.34） ----------
+// 操作の結果を目で追えるようにするための最小限だけ。OSで「視差効果を減らす」を選んでいる人には動かさない
+function motionOK(){
+  try{ return !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
+  catch(e){ return true; }
+}
+function anim(el, frames, opts){
+  if(!el || !el.animate || !motionOK()) return null;
+  try{ return el.animate(frames, opts); }catch(e){ return null; }
+}
+// 保存・戻した直後のコメントを1回だけ光らせる（どこに付いたかを目で拾えるように）
+function flashComment(id){
+  if(!id) return;
+  var els = Array.prototype.slice.call(ROOT.querySelectorAll("mark.rv"))
+    .concat(Array.prototype.slice.call(document.querySelectorAll("#rvmarks .rvbox")))
+    .filter(function(el){ return el.dataset.id === id; });
+  els.forEach(function(el){
+    anim(el, [{boxShadow:"0 0 0 0 rgba(206,0,0,.55)"}, {boxShadow:"0 0 0 7px rgba(206,0,0,0)"}],
+         {duration:650, easing:"ease-out", iterations:2});
+  });
+}
+var barAnim = null;
 function setBarMin(on){
   var bar = document.getElementById("rvbar");
   if(!bar) return;
-  bar.classList.toggle("rvmin", !!on);
+  if(barAnim){ try{ barAnim.cancel(); }catch(e){} barAnim = null; }
+  if(on && !bar.classList.contains("rvmin")){
+    // バーが右下の丸へ縮んでから、丸が出る
+    barAnim = anim(bar, [{transform:"scale(1)", opacity:1}, {transform:"scale(.3)", opacity:0}],
+                   {duration:170, easing:"cubic-bezier(.4,0,1,1)"});
+    var collapse = function(){
+      barAnim = null;
+      bar.classList.add("rvmin");
+      anim(bar, [{transform:"scale(.5)", opacity:0}, {transform:"scale(1.08)", opacity:1, offset:.7}, {transform:"scale(1)", opacity:1}],
+           {duration:220, easing:"ease-out"});
+    };
+    if(barAnim) barAnim.onfinish = collapse; else collapse();
+  } else if(!on && bar.classList.contains("rvmin")){
+    // 丸から右下を起点にバーが広がる
+    bar.classList.remove("rvmin");
+    anim(bar, [{transform:"scale(.3)", opacity:0}, {transform:"scale(1)", opacity:1}],
+         {duration:200, easing:"cubic-bezier(.2,.8,.2,1)"});
+  }
   try{ if(on) localStorage.setItem(BAR_MIN_KEY, "1"); else localStorage.removeItem(BAR_MIN_KEY); }catch(e){}
   if(!on){ var m = document.getElementById("rvmin"); if(m) m.focus(); }
   else { var x = document.getElementById("rvexpand"); if(x) x.focus(); }
@@ -358,7 +403,7 @@ function buildDOM(){
   bar.appendChild(dirBtn);
   bar.appendChild(clearBtn);
   // 畳む／戻す（v1.34）。状態はブラウザごとに覚える（ページをまたいで同じ）
-  var minBtn = document.createElement("button"); minBtn.id = "rvmin"; minBtn.className = "ghost";
+  var minBtn = document.createElement("button"); minBtn.id = "rvmin";
   minBtn.textContent = "−"; minBtn.title = "バーを畳む";
   var expandBtn = document.createElement("button"); expandBtn.id = "rvexpand";
   expandBtn.textContent = "0"; expandBtn.title = "レビューのバーを開く";
@@ -770,7 +815,14 @@ function applyResolved(){
   });
   store.appliedRevs.push(r.rev);
   save();
-  if(n > 0) toast("対応分 " + n + "件を済みにしました");
+  if(n > 0){
+    toast("対応分 " + n + "件を済みにしました");
+    // 赤線は消えた後なので、移った先の「済み」ボタンを脈打たせて場所を示す
+    setTimeout(function(){
+      anim(document.getElementById("rvdone"), [{transform:"scale(1)"}, {transform:"scale(1.18)"}, {transform:"scale(1)"}],
+           {duration:420, easing:"ease-in-out", iterations:2});
+    }, 250);
+  }
 }
 
 // Date.now() だけだと、同じミリ秒に2件作ったとき同じIDになる。衝突すると
@@ -1162,7 +1214,7 @@ function renderDonePanel(){
     btn.textContent = "戻す";
     btn.onclick = function(){
       touchComment(c.id);
-      c.status = "open"; save(); render(); toast("戻しました");
+      c.status = "open"; save(); render(); toast("戻しました"); flashComment(c.id);
     };
     row.appendChild(txt); row.appendChild(btn);
     list.appendChild(row);
@@ -2496,7 +2548,7 @@ function drawBlockBoxes(){
     }
     if(!g) return;
     var box = document.createElement("div");
-    box.className = "rvbox";
+    box.className = "rvbox"; box.dataset.id = it.c.id;
     box.style.left = g.left + "px";
     box.style.top = g.top + "px";
     box.style.width = g.width + "px";
@@ -2622,6 +2674,8 @@ function openPop(x, y, quote, note, images){
   // v1.1〜v1.21 はここでフォーカスを移さず、Cmd+Cで選んだ文字列をコピーできることを
   // 優先していた。その結果はkeydown側で引用（＝選んだ文字列そのもの）を書くことで保つ
   ta.focus({preventScroll:true});
+  anim(pop, [{opacity:0, transform:"translateY(6px) scale(.98)"}, {opacity:1, transform:"none"}],
+       {duration:150, easing:"ease-out"});
 }
 // ---------- ポップアップを動かす ----------
 // 指摘したい箇所そのものにポップアップが重なると、周りの文脈が読めないまま書くことになる
@@ -2678,9 +2732,29 @@ function closePop(){
   popDrag = null; if(pop) pop.classList.remove("rvmoving");
   clearPendingSel();
   popGen++; popImgsPending = 0;
+  if(pop.style.display === "block") fadeOutPop();
   pop.style.display = "none"; editing = null; pending = null; popImgs = []; editingBody = false;
   var th = document.getElementById("rvthread"); if(th){ th.innerHTML = ""; th.style.display = "none"; }
   var box = document.getElementById("rvimgs"); if(box) box.innerHTML = "";
+}
+// 閉じる処理は同期で状態を消す（16か所が display を見て開閉を判定している）ので、本物はすぐ隠し、
+// 見た目だけの写しをフェードさせる。写しは閉じた shadow root に入れる＝同じidが文書に2つ並ばず、
+// getElementById・querySelector・本文の走査のどれからも見えない。CSSは同じものを中へ入れて見た目を揃える
+function fadeOutPop(){
+  if(!pop.animate || !motionOK() || !document.body.attachShadow) return;
+  var host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2147483640";
+  var root;
+  try{ root = host.attachShadow({mode:"closed"}); }catch(e){ return; }
+  var st = document.createElement("style"); st.textContent = CSS;
+  var g = pop.cloneNode(true);
+  root.appendChild(st); root.appendChild(g);
+  document.body.appendChild(host);
+  var a = anim(g, [{opacity:1, transform:"none"}, {opacity:0, transform:"translateY(4px) scale(.98)"}],
+               {duration:120, easing:"ease-in"});
+  var done = function(){ if(host.parentNode) host.parentNode.removeChild(host); };
+  if(a){ a.onfinish = done; a.oncancel = done; } else done();
 }
 function tryClose(){
   if(hasUnsavedDraft() && !escArmed){
@@ -2846,8 +2920,9 @@ function bindEvents(){
           status:"open", created:nowISO()});
       }
     }
-    var savedKind = pending && pending.kind;
+    var savedKind = pending && pending.kind, savedId = editing || (pending ? id : null);
     save(); closePop(); render(); window.getSelection().removeAllRanges();
+    flashComment(savedId);
     guideAdvance("save");
     if(savedKind === "block") guideAdvance("block");
     if(savedKind === "crop") guideAdvance("crop");

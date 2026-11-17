@@ -66,14 +66,38 @@ async function select(page, fromSel, fromDx, toSel, toDx) {
 {
   const { ctx, page } = await open(false);
   const full = await page.locator('#rvbar').boundingBox();
-  await page.click('#rvmin'); await page.waitForTimeout(150);
+  await page.click('#rvmin'); await page.waitForTimeout(600);
   const min = await page.locator('#rvbar').boundingBox();
   check('−で丸1つに畳まれる', min.width <= 60 && min.height <= 60 && full.width > 200, `${full.width}→${min.width}x${min.height}`);
   await page.reload(); await page.waitForTimeout(600);
   check('畳んだ状態を覚える', (await page.locator('#rvbar').boundingBox()).width <= 60);
-  await page.click('#rvexpand'); await page.waitForTimeout(150);
+  await page.click('#rvexpand'); await page.waitForTimeout(400);
   check('丸を押すと元に戻る', (await page.locator('#rvbar').boundingBox()).width > 200);
   await ctx.close();
+}
+
+// 動き: 「−」の位置・閉じるフェードの写しが文書に出ない・保存直後に光る・動きを減らす設定
+{
+  const { ctx, page } = await open(false);
+  const bar = await page.locator('#rvbar').boundingBox(), mn = await page.locator('#rvmin').boundingBox();
+  check('「−」はバーの左上の角に乗る', mn.x < bar.x + 4 && mn.y < bar.y + 4 && mn.width <= 26, `bar=(${bar.x},${bar.y}) −=(${mn.x},${mn.y})`);
+  await select(page, '#p1', 5, '#p1', 120);
+  await page.locator('#rvnote').fill('光る');
+  await page.click('#rvsave');
+  const flashing = await page.evaluate(() => [...document.querySelectorAll('mark.rv')].some(m => m.getAnimations().length > 0));
+  check('保存した直後に印が光る', flashing);
+  const ids = await page.evaluate(() => document.querySelectorAll('[id="rvpop"],[id="rvnote"]').length);
+  check('閉じるフェード中も同じidが文書に1つ', ids === 2, `rvpop+rvnote=${ids}`);
+  await page.waitForTimeout(400);
+  check('フェードの写しは片付く', await page.evaluate(() => [...document.body.children].every(e => !e.shadowRoot && e.getAttribute('aria-hidden') !== 'true' || e.id)));
+  await ctx.close();
+  const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+  const p2 = await ctx2.newPage();
+  await p2.goto(URL); await p2.waitForTimeout(500);
+  await p2.click('#rvmin');
+  const w = (await p2.locator('#rvbar').boundingBox()).width;
+  check('動きを減らす設定では即座に畳む', w <= 60 && await p2.evaluate(() => document.getAnimations().length === 0), `幅=${w}`);
+  await ctx2.close();
 }
 
 // DIVが数千個あるページで、切り取りの保存とスクロール後の描き直しが固まらない
