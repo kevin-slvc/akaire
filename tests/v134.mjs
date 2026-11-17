@@ -76,6 +76,31 @@ async function select(page, fromSel, fromDx, toSel, toDx) {
   await ctx.close();
 }
 
+// DIVが数千個あるページで、切り取りの保存とスクロール後の描き直しが固まらない
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errs = []; page.on('pageerror', e => errs.push(String(e)));
+  await page.goto(pathToFileURL(path.join(ROOT, 'tests/fixtures/large-dom.html')).href + '#rv');
+  await page.waitForTimeout(600);
+  const skip = page.locator('text=もう出さない').first();
+  if (await skip.isVisible().catch(() => false)) { await skip.click(); await page.waitForTimeout(200); }
+  await page.evaluate(() => window.scrollTo(0, 3000)); await page.waitForTimeout(200);
+  await page.keyboard.down('Alt'); await page.mouse.move(60, 300); await page.mouse.down();
+  await page.mouse.move(400, 420, { steps: 12 }); await page.mouse.up(); await page.keyboard.up('Alt');
+  await page.waitForFunction(() => document.getElementById('rvpop').style.display === 'block');
+  const ms = await page.evaluate(() => { document.getElementById('rvnote').value = '大きいページ'; const t = performance.now(); document.getElementById('rvsave').click(); return Math.round(performance.now() - t); });
+  check('大きいページでも保存が2秒以内に終わる', ms < 2000, `${ms}ms / DIV ${await page.evaluate(() => document.querySelectorAll('div').length)}個`);
+  const boxAt = () => page.evaluate(() => { const b = document.querySelector('#rvmarks .rvbox'); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; });
+  const b0 = await boxAt();
+  check('保存した枠がドラッグした位置に出る', b0 && Math.abs(b0[0] - 60) <= 2 && Math.abs(b0[1] - 300) <= 2, JSON.stringify(b0));
+  await page.evaluate(() => window.scrollBy(0, 100)); await page.waitForTimeout(200);
+  const b1 = await boxAt();
+  check('スクロールに枠が付いてくる', b1 && Math.abs(b1[1] - (b0[1] - 100)) <= 2, JSON.stringify(b1));
+  check('大きいページでJSエラーなし', errs.length === 0, errs.join(' / '));
+  await ctx.close();
+}
+
 await browser.close();
 ok.forEach(m => console.log('  OK  ' + m));
 fails.forEach(m => console.log('  NG  ' + m));

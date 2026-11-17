@@ -986,9 +986,10 @@ function render(){
   for(var i=0;i<open.length;i++){
     var c = open[i];
     if(c.kind === "crop"){
-      var cb = cropBox(c);
+      // 見つけた基準の要素を覚えておき、スクロール・リサイズのたびに照合し直さない（v1.34）
+      var cbase = findBlock(c), cb = cbase ? cropBox(c, cbase) : null;
       if(!cb){ orphan.push(c); continue; }
-      blockItems.push({c:c, box:cb, n:i+1});
+      blockItems.push({c:c, box:cb, n:i+1, base:cbase});
       continue;
     }
     if(c.kind === "block"){
@@ -2153,14 +2154,57 @@ function elByPath(path){
   }
   return n;
 }
+// 枠の照合（findBlock）は候補ごとに本文全体と全要素をなめ直していて、DIVが数千個ある大きいページでは
+// 保存1回で数分固まった（v1.34で計測）。文字ノードの範囲と要素の並び順を flat 1回につき1度だけ作る。
+// 子孫の文字ノードは文書順で連続するので、要素ごとに最初と最後の番号だけ持てば本文を切り出せる。
+function blockIndex(f){
+  if(f._idx) return f._idx;
+  var first = new Map(), last = new Map(), order = new Map();
+  for(var i=0;i<f.map.length;i++){
+    for(var p = f.map[i].node.parentElement; p; p = p.parentElement){
+      if(!first.has(p)) first.set(p, i);
+      last.set(p, i);
+      if(p === ROOT) break;
+    }
+  }
+  var all = ROOT.getElementsByTagName("*"), n = 0;
+  for(var j=0;j<all.length;j++){
+    if(isRvNode(all[j]) || isRvChrome(all[j])) continue;
+    order.set(all[j], n++);
+  }
+  f._idx = {first:first, last:last, order:order};
+  return f._idx;
+}
+function rawBounds(el, f){
+  var x = blockIndex(f), a = x.first.get(el), b = x.last.get(el);
+  if(a === undefined) return null;
+  return {start:f.map[a].at, end:f.map[b].at + f.map[b].node.nodeValue.length};
+}
+// 空白を詰めて前後を削った本文の、先頭n字（tail=trueなら末尾n字）。本文全体を詰め直さずに済むよう、
+// 端から窓を倍々に広げ、n+1字以上取れた時点で決める（詰めた後は空白が2つ続かないので、
+// n+1字目があればn字目までが末尾の削られる空白になることはない）
+function normEdge(f, bd, n, tail){
+  if(!bd) return "";
+  var len = bd.end - bd.start;
+  for(var w = 256; ; w *= 2){
+    var whole = w >= len;
+    var raw = whole ? f.text.slice(bd.start, bd.end)
+            : tail ? f.text.slice(bd.end - w, bd.end) : f.text.slice(bd.start, bd.start + w);
+    var t = raw.replace(/\s+/g, " ");
+    t = whole ? t.trim() : tail ? t.replace(/\s+$/, "") : t.replace(/^\s+/, "");
+    if(whole) return tail ? t.slice(Math.max(0, t.length - n)) : t.slice(0, n);
+    if(t.length > n) return tail ? t.slice(t.length - n) : t.slice(0, n);
+  }
+}
 function textOfBlock(el, f){
   f = f || flat();
+  if(f._idx){ var bd = rawBounds(el, f); return bd ? f.text.slice(bd.start, bd.end).replace(/\s+/g, " ").trim() : ""; }
   var s = "";
   for(var i=0;i<f.map.length;i++) if(el.contains(f.map[i].node)) s += f.map[i].node.nodeValue;
   return s.replace(/\s+/g, " ").trim();
 }
 function fpOf(el, f){
-  var t = textOfBlock(el, f).slice(0, 80);
+  var t = f && f._idx ? normEdge(f, rawBounds(el, f), 80, false) : textOfBlock(el, f).slice(0, 80);
   if(t) return t;
   var img = el.tagName === "IMG" ? el : el.querySelector("img");
   if(img) return "[img:" + (img.getAttribute("src") || "").split("/").pop().slice(0, 40) + "]";
@@ -2183,7 +2227,8 @@ function attrSig(el){
   }
   return out.sort().join("|");
 }
-function elementOrder(el){
+function elementOrder(el, f){
+  if(f && f._idx){ var o = f._idx.order.get(el); return o === undefined ? -1 : o; }
   var all = ROOT.getElementsByTagName("*"), n = 0;
   for(var i=0;i<all.length;i++){
     if(isRvNode(all[i]) || isRvChrome(all[i])) continue;
@@ -2193,6 +2238,7 @@ function elementOrder(el){
   return -1;
 }
 function blockTextBounds(el, f){
+  if(f._idx){ var bd = rawBounds(el, f); return bd || {start:-1, end:-1}; }
   var start = -1, end = -1;
   for(var i=0;i<f.map.length;i++){
     if(!el.contains(f.map[i].node)) continue;
@@ -2203,13 +2249,15 @@ function blockTextBounds(el, f){
 }
 function blockAnchor(el, f){
   f = f || flat();
-  var text = textOfBlock(el, f), b = blockTextBounds(el, f);
-  return {tail:text.slice(Math.max(0, text.length-80)), attrs:attrSig(el),
+  var b = blockTextBounds(el, f);
+  var tail = f._idx ? normEdge(f, b.start >= 0 ? b : null, 80, true)
+                    : (function(t){ return t.slice(Math.max(0, t.length-80)); })(textOfBlock(el, f));
+  return {tail:tail, attrs:attrSig(el),
     parent:el.parentElement ? el.parentElement.tagName + "." + classSig(el.parentElement) : "",
     before:b.start >= 0 ? f.text.slice(Math.max(0, b.start-CTX), b.start) : "",
     after:b.end >= 0 ? f.text.slice(b.end, b.end+CTX) : "",
     ratio:b.start >= 0 && f.text.length ? b.start / f.text.length : null,
-    ord:elementOrder(el)};
+    ord:elementOrder(el, f)};
 }
 function pathDistance(a, b){
   if(a == null || b == null) return 0;
@@ -2242,7 +2290,8 @@ function scoreBlock(el, c, f){
 // 根拠が足りない候補や同点は、別の枠へ誤表示させず未照合にする。
 function findBlock(c){
   if(!c.tag) return null;
-  var f = flat(), list = c.tag === ROOT.tagName ? [ROOT] :
+  var f = flat(); blockIndex(f);
+  var list = c.tag === ROOT.tagName ? [ROOT] :
     Array.prototype.slice.call(ROOT.querySelectorAll(c.tag));
   var scored = [];
   for(var i=0;i<list.length;i++){
@@ -2400,8 +2449,8 @@ function startCropComment(r){
           cropLabel(pending), "", []);
 }
 // 保存済みの切り取りを、いまのレイアウトのどこに描くか
-function cropBox(c){
-  var base = findBlock(c);
+function cropBox(c, base){
+  base = base || findBlock(c);
   if(!base) return null;
   var b = base.getBoundingClientRect();
   return {left: b.left + window.scrollX + c.rect.x * b.width,
@@ -2443,7 +2492,7 @@ function drawBlockBoxes(){
       g = {left: r.left + window.scrollX - 3, top: r.top + window.scrollY - 3,
            width: r.width + 2, height: r.height + 2};
     } else if(g && it.c.kind === "crop"){
-      g = cropBox(it.c) || g;   // リサイズ後は今の位置で引き直す
+      g = cropBox(it.c, it.base && it.base.isConnected ? it.base : null) || g;   // リサイズ後は今の位置で引き直す
     }
     if(!g) return;
     var box = document.createElement("div");
@@ -3019,7 +3068,7 @@ function refreshLayoutObserver(){
   layoutObserver.disconnect();
   layoutObserver.observe(ROOT);
   blockItems.forEach(function(it){
-    var el = it.el || findBlock(it.c);
+    var el = it.el || it.base || findBlock(it.c);
     if(el && el !== ROOT) layoutObserver.observe(el);
   });
 }
