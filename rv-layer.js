@@ -1,5 +1,5 @@
 /*
- * レビュー注釈レイヤー v1.35
+ * レビュー注釈レイヤー v1.36
  *
  * AIが生成したHTMLを、ブラウザで見たまま指摘し、その指摘をAIへ貼り戻すための
  * 1ファイル完結のスクリプト。外部依存はない。
@@ -71,7 +71,7 @@ var dictItems = readDict();
 var dictControl = false;
 var guideStep = 0;        // 0=出していない / 1〜4=表示中のステップ
 var LEGACY_CLAIM_KEY = "rv-layer:legacy-claimed";   // このブラウザで層を出すかどうか（オリジン単位）
-var RV_VERSION = "1.35";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
+var RV_VERSION = "1.36";   // バーのhoverと window.__rv.version に出す。ヘッダーの版数と揃える
 var CTX = 30;             // 前後の文脈として保存する文字数
 var ROOT = null;          // init()で確定
 var store = {docId:DOC, title:document.title, updated:null, comments:[], appliedRevs:[]};
@@ -112,6 +112,8 @@ var CSS = ""
 // レイヤーは自分で box-sizing を決める。指定しないと対象ページの設定をそのまま受け、
 // border-box を敷いていないページでは width:100% の入力欄が padding と border のぶん
 // はみ出す（実測18px）。対象ページ側へは影響させないよう、rvの要素だけに閉じる。
+// 補助ボタンの地は、文字色と枠の地を混ぜて作る（v1.36）。--surface-card から取ると、ダークモードで文字色だけ
+// 明るくするページでは明るい地に明るい文字になって読めなかった。地と文字が同じ変数から来れば必ず逆の明るさになる。
 +"#rvbar,#rvbar *,#rvpop,#rvpop *,#rvdonepanel,#rvdonepanel *,#rvorphan,#rvorphan *,"
 +"#rvguide,#rvguide *,"
 +"#rvtoast,#rvmarks,#rvmarks *,#rvsel,#rvsel *,#rvhover,#rvhover *,#rvcrop,#rvcrop *"
@@ -129,9 +131,9 @@ var CSS = ""
 +"#rvbar button{font:inherit;font-size:12px;white-space:nowrap;flex-shrink:0;border:0;border-radius:6px;"
 +"box-shadow:none;text-transform:none;letter-spacing:normal;"
 +"padding:6px 12px;cursor:pointer;background:transparent;color:var(--rv-text,var(--ink,#1a1a1a))}"
-+"#rvbar button:hover{background:var(--rv-surface-sub,var(--surface-card,#f2f2f2))}"
++"#rvbar button:hover{background:var(--rv-surface-sub,color-mix(in srgb,var(--rv-text,var(--ink,#1a1a1a)) 8%,var(--rv-surface,var(--canvas,#ffffff))))}"
 +"#rvbar button.ghost{background:transparent;color:var(--rv-text-muted,var(--muted,#767676));padding:6px 8px}"
-+"#rvbar button.ghost:hover{color:var(--rv-text,var(--ink,#1a1a1a));background:var(--rv-surface-sub,var(--surface-card,#f2f2f2))}"
++"#rvbar button.ghost:hover{color:var(--rv-text,var(--ink,#1a1a1a));background:var(--rv-surface-sub,color-mix(in srgb,var(--rv-text,var(--ink,#1a1a1a)) 8%,var(--rv-surface,var(--canvas,#ffffff))))}"
 +"#rvcount{margin-right:4px;white-space:nowrap;color:var(--rv-text-muted,var(--muted,#767676))}"
 // 畳んだバー（v1.34）。本文の上に乗って邪魔なとき、件数だけの丸1つにする
 // 「−」は操作ボタンの列から外し、バーの左上の角に乗せる。列の中だと隣の「消去」と押し間違える
@@ -173,7 +175,7 @@ var CSS = ""
 +"#rvpop button{font:inherit;font-size:12px;border:0;border-radius:6px;box-shadow:none;text-transform:none;letter-spacing:normal;"
 +"padding:6px 12px;cursor:pointer;background:var(--rv-accent,#a90000);color:#fff}"
 +"#rvpop button:hover,#rvguide button:hover{filter:brightness(.92)}"
-+"#rvpop button.ghost{background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
++"#rvpop button.ghost{background:var(--rv-surface-sub,color-mix(in srgb,var(--rv-text,var(--ink,#1a1a1a)) 8%,var(--rv-surface,var(--canvas,#ffffff))));color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdonepanel{position:fixed;right:20px;bottom:70px;z-index:2147483640;width:320px;max-width:calc(100vw - 40px);"
 +"max-height:min(70vh,560px);overflow:auto;background:var(--rv-surface,var(--canvas,#ffffff));"
 +"border:1px solid var(--rv-border,var(--hairline,#cccccc));border-radius:10px;padding:12px;"
@@ -185,12 +187,12 @@ var CSS = ""
 +"#rvdonepanel .rvdoneopen{cursor:pointer}"
 +"#rvdonepanel .rvdoneopen:hover{color:var(--rv-accent,#a90000);text-decoration:underline}"
 +"#rvdonepanel .rvdonerow button{font:inherit;font-size:11px;border:0;border-radius:6px;"
-+"padding:4px 8px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
++"padding:4px 8px;cursor:pointer;background:var(--rv-surface-sub,color-mix(in srgb,var(--rv-text,var(--ink,#1a1a1a)) 8%,var(--rv-surface,var(--canvas,#ffffff))));color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdonepanel .rvdoneempty{color:var(--rv-text-muted,var(--muted,#767676));padding:6px 4px}"
 +"#rvdonepanel .rvrevision{padding:8px 4px 16px;margin-bottom:8px;border-bottom:1px solid var(--rv-border,var(--hairline,#cccccc));white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdonepanel .rvrevision-position{margin:16px 0 12px;color:var(--rv-text-muted,var(--muted,#767676))}"
 +"#rvdonepanel .rvrevision-actions{display:flex;flex-wrap:wrap;gap:8px;white-space:normal}"
-+"#rvdonepanel .rvrevision button{font:inherit;font-size:12px;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
++"#rvdonepanel .rvrevision button{font:inherit;font-size:12px;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;background:var(--rv-surface-sub,color-mix(in srgb,var(--rv-text,var(--ink,#1a1a1a)) 8%,var(--rv-surface,var(--canvas,#ffffff))));color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdonepanel .rvrevision button:hover{background:var(--rv-mark-hover,#ffdada)}"
 +"#rvdonepanel .rvrevision button.rvrevision-confirm{background:var(--rv-accent,#a90000);color:var(--rv-on-inverse,#ffffff)}"
 +"#rvdonepanel .rvrevision button:disabled{opacity:.4;cursor:default}"
@@ -215,7 +217,7 @@ var CSS = ""
 +"#rvpop #rvdict .rvdictinsert,#rvpop #rvdictadd{white-space:nowrap;padding:2px 6px;line-height:16px;font-size:11px}"
 +"#rvpop #rvdictadd{flex:0 0 auto;margin-top:6px}"
 // 定型句は補助の操作なので塗らない。赤の塗りは「保存」だけに残す（v1.35）
-+"#rvpop #rvdict .rvdictinsert,#rvpop #rvdictadd{background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text,var(--body,#1a1a1a))}"
++"#rvpop #rvdict .rvdictinsert,#rvpop #rvdictadd{background:var(--rv-surface-sub,color-mix(in srgb,var(--rv-text,var(--ink,#1a1a1a)) 8%,var(--rv-surface,var(--canvas,#ffffff))));color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvdict .rvdictremove{position:absolute;top:-6px;right:-5px;width:18px;height:18px;padding:0;border-radius:999px;font-size:11px;line-height:1;background:var(--rv-inverse,var(--surface-dark,#000000));color:#fff;visibility:hidden}"
 +"#rvdict .rvdictchip:hover .rvdictremove,#rvdict .rvdictchip:focus-within .rvdictremove{visibility:visible}"
 +"#rvdict .rvdictbadge{display:none;position:absolute;top:-6px;left:-5px;font-size:11px;line-height:14px;min-width:14px;text-align:center;border-radius:4px;background:var(--rv-inverse,#000);color:#fff;pointer-events:none}"
@@ -230,7 +232,7 @@ var CSS = ""
 +"#rvthread .rvline.rvsub .rvtxt{color:var(--rv-text-muted,var(--muted,#767676));padding-left:8px;"
 +"border-left:2px solid var(--rv-border,var(--hairline,#cccccc))}"
 +"#rvthread button{flex:0 0 auto;font:inherit;font-size:11px;border:0;border-radius:6px;"
-+"padding:2px 6px;cursor:pointer;background:var(--rv-surface-sub,var(--surface-card,#f2f2f2));color:var(--rv-text-muted,var(--muted,#767676))}"
++"padding:2px 6px;cursor:pointer;background:var(--rv-surface-sub,color-mix(in srgb,var(--rv-text,var(--ink,#1a1a1a)) 8%,var(--rv-surface,var(--canvas,#ffffff))));color:var(--rv-text-muted,var(--muted,#767676))}"
 +"#rvthread button:hover{color:var(--rv-text,var(--body,#1a1a1a))}"
 +"#rvthread .rvsubdel{opacity:.4;padding:2px 6px}"
 +"#rvthread .rvline:hover .rvsubdel,#rvthread .rvsubdel:focus-visible{opacity:1}"
